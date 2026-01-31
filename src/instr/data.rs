@@ -1,0 +1,398 @@
+use anyhow::bail;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Register(u8);
+
+impl Register {
+    pub fn new(v: u32) -> anyhow::Result<Self> {
+        if v < 32 {
+            Ok(Self(v as u8))
+        } else {
+            bail!("register out of range")
+        }
+    }
+}
+
+impl From<Register> for u8 {
+    fn from(value: Register) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum LoadWidth {
+    Byte,
+    Half,
+    Word,
+    ByteUnsigned = 4,
+    HalfUnsigned
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum StoreWidth {
+    Byte,
+    Half,
+    Word
+}
+
+impl LoadWidth {
+    pub fn new(v: u32) -> anyhow::Result<Self> {
+        use LoadWidth::*;
+        Ok(match v {
+            0 => Byte,
+            1 => Half,
+            2 => Word,
+            4 => ByteUnsigned,
+            5 => HalfUnsigned,
+            _ => bail!("load width out of range")
+        })
+    }
+}
+
+impl StoreWidth {
+    pub fn new(v: u32) -> anyhow::Result<Self> {
+        use StoreWidth::*;
+        Ok(match v {
+            0 => Byte,
+            1 => Half,
+            2 => Word,
+            _ => bail!("store width out of range")
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum FpWidth {
+    Word = 2,
+    Double
+}
+
+impl FpWidth {
+    pub fn new(v: u32) -> anyhow::Result<Self> {
+        use FpWidth::*;
+        Ok(match v {
+            2 => Word,
+            3 => Double,
+            _ => bail!("fp width out of range")
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct U5(u8);
+
+impl U5 {
+    pub fn new(v: u32) -> anyhow::Result<Self> {
+        if v < (1 << 5) {
+            Ok(Self(v as u8))
+        } else {
+            bail!("u5 out of range")
+        }
+    }
+}
+
+impl From<U5> for u8 {
+    fn from(value: U5) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct U12(u16);
+
+impl U12 {
+    pub fn new(v: u32) -> anyhow::Result<Self> {
+        if v < (1 << 12) {
+            Ok(Self(v as u16))
+        } else {
+            bail!("u12 out of range")
+        }
+    }
+}
+
+impl From<U12> for u16 {
+    fn from(value: U12) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct U20(u32);
+
+impl U20 {
+    pub fn new(v: u32) -> anyhow::Result<Self> {
+        if v < (1 << 20) {
+            Ok(Self(v))
+        } else {
+            bail!("u20 out of range")
+        }
+    }
+}
+
+impl From<U20> for u32 {
+    fn from(value: U20) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Imm12 {
+    Add,
+    SetLessThan = 2,
+    SetLessThanUnsigned,
+    Xor,
+    Or = 6,
+    And
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImmShift {
+    ShiftLeft,
+    ShiftRightLogical,
+    ShiftRightArithmetic
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntegerOpImmediate {
+    Imm12(Imm12, U12),
+    ImmShift(ImmShift, U5)
+}
+
+impl IntegerOpImmediate {
+    pub fn new(v: u32, imm: U12) -> anyhow::Result<Self> {
+        use self::{
+            IntegerOpImmediate::*,
+            Imm12::*,
+            ImmShift::*
+        };
+
+        Ok(match v {
+            0 => Imm12(Add, imm),
+            2 => Imm12(SetLessThan, imm),
+            3 => Imm12(SetLessThanUnsigned, imm),
+            4 => Imm12(Xor, imm),
+            6 => Imm12(Or, imm),
+            7 => Imm12(And, imm),
+
+            1 if imm.0 >> 5 == 0 => ImmShift(ShiftLeft, U5::new(imm.0.into())?),
+            5 if imm.0 >> 5 == 0 => ImmShift(ShiftRightLogical, U5::new(imm.0.into())?),
+            5 if imm.0 >> 5 == 0b100000 => ImmShift(ShiftRightArithmetic, U5::new((imm.0 & 0b11111).into())?),
+
+            _ => bail!("unknown immediate op")
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum IntegerOp {
+    Add,
+    ShiftLeft,
+    SetLessThan,
+    SetLessThanUnsigned,
+    Xor,
+    ShiftRight,
+    Or,
+    And,
+    Subtract,
+    ShiftRightArithmetic,
+
+    // RV32M extension
+    Multiply,
+    MultiplyHalf,
+    MultiplyHalfSignedUnsigned,
+    MultiplyHalfUnsigned,
+    Divide,
+    DivideUnsigned,
+    Remainder,
+    RemainderUnsigned
+}
+
+impl IntegerOp {
+    pub fn new(v: u32) -> anyhow::Result<Self> {
+        use IntegerOp::*;
+        Ok(match v {
+            0 => Add,
+            1 => ShiftLeft,
+            2 => SetLessThan,
+            3 => SetLessThanUnsigned,
+            4 => Xor,
+            5 => ShiftRight,
+            6 => Or,
+            7 => And,
+            0b100000000 => Subtract,
+            0b100000101 => ShiftRightArithmetic,
+
+            8 => Multiply,
+            9 => MultiplyHalf,
+            10 => MultiplyHalfSignedUnsigned,
+            11 => MultiplyHalfUnsigned,
+            12 => Divide,
+            13 => DivideUnsigned,
+            14 => Remainder,
+            15 => RemainderUnsigned,
+
+            _ => bail!("unknown op")
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum BranchType {
+    Equal,
+    NotEqual,
+    LessThan = 4,
+    GreaterThanOrEqual,
+    LessThanUnsigned,
+    GreaterThanOrEqualUnsigned
+}
+
+impl BranchType {
+    pub fn new(v: u32) -> anyhow::Result<Self> {
+        use BranchType::*;
+        Ok(match v {
+            0 => Equal,
+            1 => NotEqual,
+            4 => LessThan,
+            5 => GreaterThanOrEqual,
+            6 => LessThanUnsigned,
+            7 => GreaterThanOrEqualUnsigned,
+            _ => bail!("unknown branch type")
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+enum InjectSignType {
+    AsIs,
+    Negated,
+    Xor
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+enum MinMaxType {
+    Minimum,
+    Maximum
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+enum Signedness {
+    Signed,
+    Unsigned
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+enum MoveToXSingleType {
+    Move,
+    Classify
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+enum CompareType {
+    LessThanOrEqual,
+    LessThan,
+    Equal
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum FloatOp {
+    AddSingle = 0,
+    SubtractSingle = 0b100,
+    MultiplySingle = 0b1000,
+    DivideSingle = 0b1100,
+    SquareRootSingle = 0b101100,
+    InjectSignSingle = 0b10000, // rm = 0 (as-is), 1 (negated), or 2 (xor)
+    MinMaxSingle = 0b10100, // rm = 0 (min) or 1 (max)
+    ConvertToWordSingle = 0b1100000, // rs2 = 0 for signed, 1 for unsigned
+    MoveToXSingle = 0b1110000, // rs2 = 0; rm = 0 for move, 1 for classify
+    CompareSingle = 0b1010000, // rm = 0 (le), 1 (lt), or 2 (eq)
+    ConvertFromWordSingle = 0b1101000, // rs2 = 0 for signed, 1 for unsigned
+    MoveFromXSingle = 0b1111000, // rs2 = 0
+
+    // RV32D
+    ConvertDoubleToSingle = 0b100000, // rs2 = 1
+    ConvertSingleToDouble = 0b100001, // rs2 = 0
+
+    AddDouble = 0b0000001,
+    SubtractDouble = 0b0000101,
+    MultiplyDouble = 0b0001001,
+    DivideDouble = 0b0001101,
+    SquareRootDouble = 0b0101101,
+    InjectSignDouble = 0b0010001, // rm = 0 (as-is), 1 (negated), or 2 (xor)
+    MinMaxDouble = 0b0010101, // rm = 0 (min) or 1 (max)
+    CompareDouble = 0b1010001, // rm = 0 (le), 1 (lt), or 2 (eq)
+    ClassifyDouble = 0b1110001, // rs2 = 0, rm = 1
+    ConvertToWordDouble = 0b1100001, // rs2 = 0 for signed, 1 for unsigned
+    ConvertFromWordDouble = 0b1101001 // rs2 = 0 for signed, 1 for unsigned
+}
+
+impl FloatOp {
+    pub fn new(v: u32) -> anyhow::Result<Self> {
+        use FloatOp::*;
+        Ok(match v {
+            0b0000000 => AddSingle,
+            0b0000100 => SubtractSingle,
+            0b0001000 => MultiplySingle,
+            0b0001100 => DivideSingle,
+            0b0101100 => SquareRootSingle,
+            0b0010000 => InjectSignSingle,
+            0b0010100 => MinMaxSingle,
+            0b1100000 => ConvertToWordSingle,
+            0b1110000 => MoveToXSingle,
+            0b1010000 => CompareSingle,
+            0b1101000 => ConvertFromWordSingle,
+            0b1111000 => MoveFromXSingle,
+            0b0100000 => ConvertDoubleToSingle,
+            0b0100001 => ConvertSingleToDouble,
+            0b0000001 => AddDouble,
+            0b0000101 => SubtractDouble,
+            0b0001001 => MultiplyDouble,
+            0b0001101 => DivideDouble,
+            0b0101101 => SquareRootDouble,
+            0b0010001 => InjectSignDouble,
+            0b0010101 => MinMaxDouble,
+            0b1010001 => CompareDouble,
+            0b1110001 => ClassifyDouble,
+            0b1100001 => ConvertToWordDouble,
+            0b1101001 => ConvertFromWordDouble,
+            _ => bail!("unknown branch type")
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum RoundingMode {
+    NearestTieToEven,
+    Zero,
+    Down,
+    Up,
+    NearestTieToMaxMagnitude,
+    Dynamic = 7
+}
+
+impl RoundingMode {
+    pub fn new(v: u32) -> anyhow::Result<Self> {
+        use RoundingMode::*;
+        Ok(match v {
+            0 => NearestTieToEven,
+            1 => Zero,
+            2 => Down,
+            3 => Up,
+            4 => NearestTieToMaxMagnitude,
+            7 => Dynamic,
+            _ => bail!("unknown rounding mode")
+        })
+    }
+}
