@@ -11,6 +11,14 @@ impl Register {
             bail!("register out of range")
         }
     }
+
+    pub fn new_rvc(v: u16) -> anyhow::Result<Self> {
+        if v < 8 {
+            Ok(Self(v as u8 + 8))
+        } else {
+            bail!("register out of range")
+        }
+    }
 }
 
 impl From<Register> for u8 {
@@ -134,6 +142,26 @@ impl U20 {
 
 impl From<U20> for u32 {
     fn from(value: U20) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct I20(i32);
+
+impl I20 {
+    pub fn new(v: u32) -> anyhow::Result<Self> {
+        if v < (1 << 20) {
+            let val = (v << 12) as i32 >> 11;
+            Ok(Self(val))
+        } else {
+            bail!("u20 out of range")
+        }
+    }
+}
+
+impl From<I20> for i32 {
+    fn from(value: I20) -> Self {
         value.0
     }
 }
@@ -424,6 +452,42 @@ impl CsrFunct {
             6 => ReadAndSetBitsImmediate,
             7 => ReadAndClearBitsImmediate,
             _ => bail!("unknown csr funct")
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum AmoFunct {
+    Add,
+    Swap,
+    LoadReserved,
+    StoreConditional,
+    Xor,
+    Or = 8,
+    And = 12,
+    Min = 16,
+    Max = 20,
+    MinUnsigned = 24,
+    MaxUnsigned = 28
+}
+
+impl AmoFunct {
+    pub fn new(v: u32) -> anyhow::Result<Self> {
+        use AmoFunct::*;
+        Ok(match v {
+            0 => Add,
+            1 => Swap,
+            2 => LoadReserved,
+            3 => StoreConditional,
+            4 => Xor,
+            8 => Or,
+            12 => And,
+            16 => Min,
+            20 => Max,
+            24 => MinUnsigned,
+            28 => MaxUnsigned,
+            _ => bail!("unknown amo funct")
         })
     }
 }

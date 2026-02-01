@@ -1,17 +1,23 @@
+use object::{LittleEndian, Object, ObjectSection, ObjectSymbol, read::elf::ElfFile32};
+
 use crate::instr::Instruction;
 
 mod instr;
 mod cpu;
 
 fn main() {
-    let program = include_bytes!("/Users/robbie/Downloads/bsnes.bin");
+    let program = ElfFile32::<LittleEndian>::parse(&include_bytes!("../bsnes.elf")[..]).unwrap();
+    let gp = program.symbol_by_name("__global_pointer$").unwrap().address();
+    println!("gp = {gp:08X}");
+    let text = program.section_by_name(".text").unwrap().data().unwrap();
+
     let mut pos = 0;
-    while pos < program.len() {
-        let (instr, raw, length) = if Instruction::next_is_compressed(program[pos]) {
-            let raw = u16::from_le_bytes(program[pos..pos+2].try_into().unwrap());
+    while pos < text.len() {
+        let (instr, raw, length) = if Instruction::next_is_compressed(text[pos]) {
+            let raw = u16::from_le_bytes(text[pos..pos+2].try_into().unwrap());
             (Instruction::decode_compressed(raw), raw.into(), 2)
         } else {
-            let raw = u32::from_le_bytes(program[pos..pos+4].try_into().unwrap());
+            let raw = u32::from_le_bytes(text[pos..pos+4].try_into().unwrap());
             (Instruction::decode(raw), raw, 4)
         };
         print!("{pos:08X}: {instr:?}");
