@@ -59,7 +59,7 @@ pub struct LoadInt {
     pub dest: Register,
     pub width: LoadWidth,
     pub base: Register,
-    pub offset: U12
+    pub offset: I12
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,7 +84,7 @@ pub struct U {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreInt {
-    pub offset: U12,
+    pub offset: I12,
     pub width: StoreWidth,
     pub base: Register,
     pub src: Register
@@ -100,7 +100,7 @@ pub struct Int {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Branch {
-    pub offset: U12,
+    pub offset: I12,
     pub funct: BranchType,
     pub src1: Register,
     pub src2: Register
@@ -116,7 +116,7 @@ pub struct JumpAndLink {
 pub struct JumpAndLinkRegister {
     pub dest: Register,
     pub base: Register,
-    pub offset: U12
+    pub offset: I12
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,7 +124,7 @@ pub struct Csr {
     pub dest: Register,
     pub funct: CsrFunct,
     pub src: Register,
-    pub csr: U12
+    pub csr: I12
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,12 +139,12 @@ pub struct LoadFp {
     pub dest: Register,
     pub width: FpWidth,
     pub base: Register,
-    pub offset: U12
+    pub offset: I12
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreFp {
-    pub offset: U12,
+    pub offset: I12,
     pub width: FpWidth,
     pub base: Register,
     pub src: Register
@@ -212,7 +212,7 @@ pub enum Instruction {
     System(System),
     LoadFp(LoadFp),
     StoreFp(StoreFp),
-    OpFp(Fp),
+    Fp(Fp),
     Fused(Fused),
     Amo(Amo)
 }
@@ -232,40 +232,129 @@ impl Instruction {
                         {
                             let imm = (v >> 5) & 0xff;
                             let nzuimm = ((imm & 1) << 1) | ((imm & 0b10) >> 1) | ((imm & 0b111100) << 2) | ((imm & 0b11000000) >> 4);
-                            U12::new((nzuimm * 4).into())?
+                            I12::new(nzuimm * 4)?
                         }
                     ),
-                    src: Register::new(2)?
+                    src: Register::TWO
                 }),
-                C0_FLD => bail!("not yet implemented (C)"),
-                C0_LW => bail!("not yet implemented (C)"),
-                C0_FLW => bail!("not yet implemented (C)"),
-                C0_FSD => bail!("not yet implemented (C)"),
-                C0_SW => bail!("not yet implemented (C)"),
-                C0_FSW => bail!("not yet implemented (C)"),
+                C0_FLD => Self::LoadFp(LoadFp {
+                    dest: Register::new_rvc((v >> 2) & 0b111)?,
+                    width: FpWidth::Double,
+                    base: Register::new_rvc((v >> 7) & 0b111)?,
+                    offset: I12::new((v & 0b1110000000000) >> 7)?
+                }),
+                C0_LW => Self::LoadInt(LoadInt {
+                    dest: Register::new_rvc((v >> 2) & 0b111)?,
+                    width: LoadWidth::Word,
+                    base: Register::new_rvc((v >> 7) & 0b111)?,
+                    offset: I12::new((v & 0b1110000000000) >> 7)?
+                }),
+                C0_FLW =>  Self::LoadFp(LoadFp {
+                    dest: Register::new_rvc((v >> 2) & 0b111)?,
+                    width: FpWidth::Word,
+                    base: Register::new_rvc((v >> 7) & 0b111)?,
+                    offset: I12::new((v & 0b1110000000000) >> 7)?
+                }),
+                C0_FSD => Self::StoreFp(StoreFp {
+                    offset: I12::new((v & 0b1110000000000) >> 7)?,
+                    width: FpWidth::Double,
+                    base: Register::new_rvc((v >> 7) & 0b111)?,
+                    src: Register::new_rvc((v >> 2) & 0b111)?
+                }),
+                C0_SW => Self::StoreInt(StoreInt {
+                    offset: I12::new((v & 0b1110000000000) >> 7)?,
+                    width: StoreWidth::Word,
+                    base: Register::new_rvc((v >> 7) & 0b111)?,
+                    src: Register::new_rvc((v >> 2) & 0b111)?
+                }),
+                C0_FSW => Self::StoreFp(StoreFp {
+                    offset: I12::new((v & 0b1110000000000) >> 7)?,
+                    width: FpWidth::Word,
+                    base: Register::new_rvc((v >> 7) & 0b111)?,
+                    src: Register::new_rvc((v >> 2) & 0b111)?
+                }),
                 0b100 => bail!("unknown opcode"), // reserved
                 _ => unreachable!()
             },
             1 => match v >> 13 {
-                C1_ADDI => bail!("not yet implemented (C)"),
-                C1_JAL => bail!("not yet implemented (C)"),
-                C1_LI => bail!("not yet implemented (C)"),
-                C1_LUI => bail!("not yet implemented (C)"),
-                C1_MANY => bail!("not yet implemented (C)"),
-                C1_J => bail!("not yet implemented (C)"),
-                C1_BEQZ => bail!("not yet implemented (C)"),
-                C1_BNEZ => bail!("not yet implemented (C)"),
+                C1_ADDI => bail!("not yet implemented (C1)"),
+                C1_JAL => bail!("not yet implemented (C1)"),
+                C1_LI => bail!("not yet implemented (C1)"),
+                C1_LUI => bail!("not yet implemented (C1)"),
+                C1_MANY => bail!("not yet implemented (C1)"),
+                C1_J => bail!("not yet implemented (C1)"),
+                C1_BEQZ => bail!("not yet implemented (C1)"),
+                C1_BNEZ => bail!("not yet implemented (C1)"),
                 _ => unreachable!()
             },
             2 => match v >> 13 {
-                C2_SLLI => bail!("not yet implemented (C)"),
-                C2_FLDSP => bail!("not yet implemented (C)"),
-                C2_LWSP => bail!("not yet implemented (C)"),
-                C2_FLWSP => bail!("not yet implemented (C)"),
-                C2_MANY => bail!("not yet implemented (C)"),
-                C2_FSDSP => bail!("not yet implemented (C)"),
-                C2_SWSP => bail!("not yet implemented (C)"),
-                C2_FSWSP => bail!("not yet implemented (C)"),
+                C2_SLLI => Self::IntImmediate(IntImmediate {
+                    dest: Register::new((v >> 7) & 0b11111)?,
+                    funct: IntegerOpImmediate::ImmShift(ImmShift::ShiftLeft, U5::new((v & 0b1111100) >> 2 | ((v & 0x1000) >> 7))?),
+                    src: Register::new((v >> 7) & 0b11111)?,
+                }),
+                C2_FLDSP => Self::LoadFp(LoadFp {
+                    dest: Register::new((v >> 7) & 0b11111)?,
+                    width: FpWidth::Double,
+                    base: Register::TWO,
+                    offset: I12::new(((v & 0b1100000) >> 2) | ((v & 0x1000) >> 7) | ((v & 0b11100) << 4))?
+                }),
+                C2_LWSP if (v >> 7) & 0x1f != 0 => Self::LoadInt(LoadInt {
+                    dest: Register::new((v >> 7) & 0b11111)?,
+                    width: LoadWidth::Word,
+                    base: Register::TWO,
+                    offset: I12::new(((v & 0b1110000) >> 2) | ((v & 0x1000) >> 7) | ((v & 0b1100) << 4))?
+                }),
+                C2_FLWSP => Self::LoadFp(LoadFp {
+                    dest: Register::new((v >> 7) & 0b11111)?,
+                    width: FpWidth::Word,
+                    base: Register::TWO,
+                    offset: I12::new(((v & 0b1110000) >> 2) | ((v & 0x1000) >> 7) | ((v & 0b1100) << 4))?
+                }),
+                C2_MANY => match (v & 0x1000 != 0, v & 0b111110000000 != 0, v & 0b1111100 != 0) {
+                    (false, true, false) => Self::JumpAndLinkRegister(JumpAndLinkRegister {
+                        dest: Register::ZERO,
+                        base: Register::new((v & 0b111110000000) >> 7)?,
+                        offset: I12::ZERO
+                    }),
+                    (false, _, true) => Self::Int(Int {
+                        dest: Register::new((v & 0b111110000000) >> 7)?,
+                        funct: IntegerFunct::Add,
+                        src1: Register::ZERO,
+                        src2: Register::new((v & 0b1111100) >> 2)?
+                    }),
+                    (true, false, false) => Self::System(System::Ebreak),
+                    (true, true, false) => Self::JumpAndLinkRegister(JumpAndLinkRegister {
+                        dest: Register::ONE,
+                        base: Register::new((v & 0b111110000000) >> 7)?,
+                        offset: I12::ZERO
+                    }),
+                    (true, _, true) => Self::Int(Int {
+                        dest: Register::new((v & 0b111110000000) >> 7)?,
+                        funct: IntegerFunct::Add,
+                        src1: Register::new((v & 0b111110000000) >> 7)?,
+                        src2: Register::new((v & 0b1111100) >> 2)?
+                    }),
+                    (false, false, false) => bail!("unknown opcode") // (reserved)
+                },
+                C2_FSDSP => Self::StoreFp(StoreFp {
+                    offset: I12::new(((v & 0b1110000000) >> 1) | ((v & 0b1110000000000) >> 7))?,
+                    width: FpWidth::Double,
+                    base: Register::TWO,
+                    src: Register::new((v >> 2) & 0b11111)?
+                }),
+                C2_SWSP => Self::StoreInt(StoreInt {
+                    offset: I12::new(((v & 0b110000000) >> 1) | ((v & 0b1111000000000) >> 7))?,
+                    width: StoreWidth::Word,
+                    base: Register::TWO,
+                    src: Register::new((v >> 2) & 0b11111)?
+                }),
+                C2_FSWSP => Self::StoreFp(StoreFp {
+                    offset: I12::new(((v & 0b110000000) >> 1) | ((v & 0b1111000000000) >> 7))?,
+                    width: FpWidth::Word,
+                    base: Register::TWO,
+                    src: Register::new((v >> 2) & 0b11111)?
+                }),
                 _ => unreachable!()
             },
             3 => bail!("not a compressed instruction"),
@@ -279,12 +368,12 @@ impl Instruction {
                 dest: Register::new((v >> 7) & 0b11111)?,
                 width: LoadWidth::new((v >> 12) & 0b111)?,
                 base: Register::new((v >> 15) & 0b11111)?,
-                offset: U12::new(v >> 20)?
+                offset: I12::new(v >> 20)?
             }),
             FENCE => Self::Fence,
             OP_IMM => Self::IntImmediate(IntImmediate {
                 dest: Register::new((v >> 7) & 0b11111)?,
-                funct: IntegerOpImmediate::new((v >> 12) & 0b111, U12::new(v >> 20)?)?,
+                funct: IntegerOpImmediate::new((v >> 12) & 0b111, I12::new(v >> 20)?)?,
                 src: Register::new((v >> 15) & 0b11111)?
             }),
             AUIPC | LUI => Self::U(U {
@@ -297,7 +386,7 @@ impl Instruction {
                 imm: U20::new(v >> 12)?
             }),
             STORE => Self::StoreInt(StoreInt {
-                offset: U12::new(((v >> 7) & 0b11111) | ((v >> 20) & 0b111111100000))?,
+                offset: I12::new(((v >> 7) & 0b11111) | ((v >> 20) & 0b111111100000))?,
                 width: StoreWidth::new((v >> 12) & 0b111)?,
                 base: Register::new((v >> 15) & 0b11111)?,
                 src: Register::new((v >> 20) & 0b11111)?
@@ -309,7 +398,7 @@ impl Instruction {
                 src2: Register::new((v >> 20) & 0b11111)?
             }),
             BRANCH => Self::Branch(Branch {
-                offset: U12::new(((v >> 7) & 0b11111) | ((v >> 20) & 0b111111100000))?,
+                offset: I12::new(((v >> 7) & 0b11111) | ((v >> 20) & 0b111111100000))?,
                 funct: BranchType::new((v >> 12) & 0b111)?,
                 src1: Register::new((v >> 15) & 0b11111)?,
                 src2: Register::new((v >> 20) & 0b11111)?
@@ -324,7 +413,7 @@ impl Instruction {
             JALR if v & (0b111 << 12) == 0 => Self::JumpAndLinkRegister(JumpAndLinkRegister {
                 dest: Register::new((v >> 7) & 0b11111)?,
                 base: Register::new((v >> 15) & 0b11111)?,
-                offset: U12::new(v >> 20)?
+                offset: I12::new(v >> 20)?
             }),
             SYSTEM => Self::System(match v >> 7 {
                 0 => System::Ecall,
@@ -334,7 +423,7 @@ impl Instruction {
                         dest: Register::new((v >> 7) & 0b11111)?,
                         funct,
                         src: Register::new((v >> 15) & 0b11111)?,
-                        csr: U12::new(v >> 20)?
+                        csr: I12::new(v >> 20)?
                     }),
                     Err(_) => bail!("unknown SYSTEM")
                 }
@@ -343,15 +432,15 @@ impl Instruction {
                 dest: Register::new((v >> 7) & 0b11111)?,
                 width: FpWidth::new((v >> 12) & 0b111)?,
                 base: Register::new((v >> 15) & 0b11111)?,
-                offset: U12::new(v >> 20)?
+                offset: I12::new(v >> 20)?
             }),
             STORE_FP => Self::StoreFp(StoreFp {
-                offset: U12::new(((v >> 7) & 0b11111) | ((v >> 20) & 0b111111100000))?,
+                offset: I12::new(((v >> 7) & 0b11111) | ((v >> 20) & 0b111111100000))?,
                 width: FpWidth::new((v >> 12) & 0b111)?,
                 base: Register::new((v >> 15) & 0b11111)?,
                 src: Register::new((v >> 20) & 0b11111)?
             }),
-            OP_FP => Self::OpFp(Fp {
+            OP_FP => Self::Fp(Fp {
                 dest: Register::new((v >> 7) & 0b11111)?,
                 funct: FloatFunct::new(v >> 25)?,
                 rounding_mode: RoundingMode::new((v >> 12) & 0b111)?,

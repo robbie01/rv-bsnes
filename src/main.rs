@@ -8,8 +8,10 @@ mod cpu;
 fn main() {
     let program = ElfFile32::<LittleEndian>::parse(&include_bytes!("../bsnes.elf")[..]).unwrap();
     let gp = program.symbol_by_name("__global_pointer$").unwrap().address();
-    println!("gp = {gp:08X}");
-    let text = program.section_by_name(".text").unwrap().data().unwrap();
+    println!("gp = {gp:06x}");
+    let text_sect = program.section_by_name(".text").unwrap();
+    let text_off = text_sect.address() as usize;
+    let text = text_sect.data().unwrap();
 
     let mut pos = 0;
     while pos < text.len() {
@@ -20,7 +22,7 @@ fn main() {
             let raw = u32::from_le_bytes(text[pos..pos+4].try_into().unwrap());
             (Instruction::decode(raw), raw, 4)
         };
-        print!("{pos:08X}: {instr:?}");
+        print!("{:06x}: {instr:?}", text_off+pos);
         if instr.is_err() {
             if length == 2 {
                 print!(" {{{raw:04X}}}");

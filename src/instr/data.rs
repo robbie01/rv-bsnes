@@ -4,7 +4,12 @@ use anyhow::bail;
 pub struct Register(u8);
 
 impl Register {
-    pub fn new(v: u32) -> anyhow::Result<Self> {
+    pub const ZERO: Self = Self(0);
+    pub const ONE: Self = Self(1);
+    pub const TWO: Self = Self(2);
+
+    pub fn new(v: impl Into<u32>) -> anyhow::Result<Self> {
+        let v = v.into();
         if v < 32 {
             Ok(Self(v as u8))
         } else {
@@ -93,7 +98,8 @@ impl FpWidth {
 pub struct U5(u8);
 
 impl U5 {
-    pub fn new(v: u32) -> anyhow::Result<Self> {
+    pub fn new(v: impl Into<u32>) -> anyhow::Result<Self> {
+        let v = v.into();
         if v < (1 << 5) {
             Ok(Self(v as u8))
         } else {
@@ -109,20 +115,29 @@ impl From<U5> for u8 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct U12(u16);
+pub struct I12(i16);
 
-impl U12 {
-    pub fn new(v: u32) -> anyhow::Result<Self> {
+impl I12 {
+    pub const ZERO: Self = Self(0);
+
+    pub fn new(v: impl Into<u32>) -> anyhow::Result<Self> {
+        let v = v.into();
         if v < (1 << 12) {
-            Ok(Self(v as u16))
+            Ok(Self((v << 4) as i16 >> 4))
         } else {
             bail!("u12 out of range")
         }
     }
 }
 
-impl From<U12> for u16 {
-    fn from(value: U12) -> Self {
+impl From<I12> for u16 {
+    fn from(value: I12) -> Self {
+        value.0 as u16 & 0xfff
+    }
+}
+
+impl From<I12> for i16 {
+    fn from(value: I12) -> Self {
         value.0
     }
 }
@@ -155,7 +170,7 @@ impl I20 {
             let val = (v << 12) as i32 >> 11;
             Ok(Self(val))
         } else {
-            bail!("u20 out of range")
+            bail!("i20 out of range")
         }
     }
 }
@@ -186,12 +201,12 @@ pub enum ImmShift {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IntegerOpImmediate {
-    Imm12(Imm12, U12),
+    Imm12(Imm12, I12),
     ImmShift(ImmShift, U5)
 }
 
 impl IntegerOpImmediate {
-    pub fn new(v: u32, imm: U12) -> anyhow::Result<Self> {
+    pub fn new(v: u32, imm: I12) -> anyhow::Result<Self> {
         use self::{
             IntegerOpImmediate::*,
             Imm12::*,
@@ -206,9 +221,9 @@ impl IntegerOpImmediate {
             6 => Imm12(Or, imm),
             7 => Imm12(And, imm),
 
-            1 if imm.0 >> 5 == 0 => ImmShift(ShiftLeft, U5::new(imm.0.into())?),
-            5 if imm.0 >> 5 == 0 => ImmShift(ShiftRightLogical, U5::new(imm.0.into())?),
-            5 if imm.0 >> 5 == 0b100000 => ImmShift(ShiftRightArithmetic, U5::new((imm.0 & 0b11111).into())?),
+            1 if u16::from(imm) >> 5 == 0 => ImmShift(ShiftLeft, U5::new(u16::from(imm))?),
+            5 if u16::from(imm) >> 5 == 0 => ImmShift(ShiftRightLogical, U5::new(u16::from(imm))?),
+            5 if u16::from(imm) >> 5 == 0b100000 => ImmShift(ShiftRightArithmetic, U5::new(u16::from(imm) & 0b11111)?),
 
             _ => bail!("unknown immediate op")
         })
