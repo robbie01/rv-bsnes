@@ -277,14 +277,77 @@ impl Instruction {
                 _ => unreachable!()
             },
             1 => match v >> 13 {
-                C1_ADDI => bail!("not yet implemented (C1)"),
-                C1_JAL => bail!("not yet implemented (C1)"),
-                C1_LI => bail!("not yet implemented (C1)"),
-                C1_LUI => bail!("not yet implemented (C1)"),
+                C1_ADDI => Self::IntImmediate(IntImmediate {
+                    dest: Register::new((v >> 7) & 0b11111)?,
+                    funct: IntegerOpImmediate::Imm12(Imm12::Add, I12::new_6((v & 0b1111100) >> 2 | ((v & 0x1000) >> 7))?),
+                    src: Register::new((v >> 7) & 0b11111)?
+                }),
+                C1_JAL => Self::JumpAndLink(JumpAndLink {
+                    dest: Register::ONE,
+                    offset: I20::new_11(
+                        ((v & 0b111000) >> 3) |
+                        ((v & 0b100000000000) >> 8) |
+                        ((v & 0b100) << 2) |
+                        ((v & 0b10000000) >> 2) |
+                        (v & 0b1000000) |
+                        ((v & 0b11000000000) >> 2) |
+                        ((v & 0b100000000) << 1) |
+                        ((v & 0b1000000000000) >> 2)
+                    )?
+                }),
+                C1_LI => Self::IntImmediate(IntImmediate {
+                    dest: Register::new((v >> 7) & 0b11111)?,
+                    funct: IntegerOpImmediate::Imm12(Imm12::Add, I12::new_6((v & 0b1111100) >> 2 | ((v & 0x1000) >> 7))?),
+                    src: Register::ZERO
+                }),
+                C1_LUI => match (v >> 7) & 0b11111 {
+                    0..=1 | 3..=31 => Self::U(U {
+                        type_: UType::LoadUpperImmediate,
+                        dest: Register::new((v >> 7) & 0b11111)?,
+                        imm: U20::new_i6((v & 0b1111100) >> 2 | ((v & 0x1000) >> 7))?
+                    }),
+                    2 if v & 0b1111100 != 0 || v & 0x1000 != 0 => Self::IntImmediate(IntImmediate {
+                        dest: Register::TWO,
+                        funct: IntegerOpImmediate::Imm12(
+                            Imm12::Add,
+                            I12::new_10(
+                                ((v & 0b1000000) >> 2) |
+                                ((v & 0b100) << 3) |
+                                ((v & 0b100000) << 1) |
+                                ((v & 0b11000) << 4) |
+                                ((v & 0b1000000000000) >> 3)
+                            )?
+                        ),
+                        src: Register::TWO
+                    }),
+                    _ => bail!("unknown opcode") // reserved
+                },
                 C1_MANY => bail!("not yet implemented (C1)"),
-                C1_J => bail!("not yet implemented (C1)"),
-                C1_BEQZ => bail!("not yet implemented (C1)"),
-                C1_BNEZ => bail!("not yet implemented (C1)"),
+                C1_J => Self::JumpAndLink(JumpAndLink {
+                    dest: Register::ZERO,
+                    offset: I20::new_11(
+                        ((v & 0b111000) >> 3) |
+                        ((v & 0b100000000000) >> 8) |
+                        ((v & 0b100) << 2) |
+                        ((v & 0b10000000) >> 2) |
+                        (v & 0b1000000) |
+                        ((v & 0b11000000000) >> 2) |
+                        ((v & 0b100000000) << 1) |
+                        ((v & 0b1000000000000) >> 2)
+                    )?
+                }),
+                C1_BEQZ => Self::Branch(Branch {
+                    offset: I12::new_9(((v & 0b11000) >> 2) | ((v & 0b110000000000) >> 7) | ((v & 0b100) << 3) | ((v & 0b1100000) << 1) | ((v & 0b1000000000000) >> 4))?,
+                    funct: BranchType::Equal,
+                    src1: Register::new_rvc((v >> 7) & 0b111)?,
+                    src2: Register::ZERO
+                }),
+                C1_BNEZ => Self::Branch(Branch {
+                    offset: I12::new_9(((v & 0b11000) >> 2) | ((v & 0b110000000000) >> 7) | ((v & 0b100) << 3) | ((v & 0b1100000) << 1) | ((v & 0b1000000000000) >> 4))?,
+                    funct: BranchType::NotEqual,
+                    src1: Register::new_rvc((v >> 7) & 0b111)?,
+                    src2: Register::ZERO
+                }),
                 _ => unreachable!()
             },
             2 => match v >> 13 {

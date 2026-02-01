@@ -125,7 +125,31 @@ impl I12 {
         if v < (1 << 12) {
             Ok(Self((v << 4) as i16 >> 4))
         } else {
-            bail!("u12 out of range")
+            bail!("i12 out of range")
+        }
+    }
+
+    pub fn new_6(v: u16) -> anyhow::Result<Self> {
+        if v < (1 << 6) {
+            Ok(Self((v << 10) as i16 >> 10))
+        } else {
+            bail!("i12 out of range")
+        }
+    }
+
+    pub fn new_9(v: u16) -> anyhow::Result<Self> {
+        if v < (1 << 9) {
+            Ok(Self((v << 7) as i16 >> 7))
+        } else {
+            bail!("i12 out of range")
+        }
+    }
+
+    pub fn new_10(v: u16) -> anyhow::Result<Self> {
+        if v < (1 << 10) {
+            Ok(Self((v << 6) as i16 >> 6))
+        } else {
+            bail!("i12 out of range")
         }
     }
 }
@@ -153,6 +177,14 @@ impl U20 {
             bail!("u20 out of range")
         }
     }
+
+    pub fn new_i6(v: u16) -> anyhow::Result<Self> {
+        if v < (1 << 6) {
+            Ok(Self((((v as u32) << 26) as i32 >> 26) as u32 & 0xFFFFF))
+        } else {
+            bail!("u20 out of range")
+        }
+    }
 }
 
 impl From<U20> for u32 {
@@ -168,6 +200,15 @@ impl I20 {
     pub fn new(v: u32) -> anyhow::Result<Self> {
         if v < (1 << 20) {
             let val = (v << 12) as i32 >> 11;
+            Ok(Self(val))
+        } else {
+            bail!("i20 out of range")
+        }
+    }
+
+    pub fn new_11(v: u16) -> anyhow::Result<Self> {
+        if v < (1 << 11) {
+            let val = ((v as u32) << 21) as i32 >> 20;
             Ok(Self(val))
         } else {
             bail!("i20 out of range")
