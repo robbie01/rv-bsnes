@@ -322,7 +322,69 @@ impl Instruction {
                     }),
                     _ => bail!("unknown opcode") // reserved
                 },
-                C1_MANY => bail!("not yet implemented (C1)"),
+                C1_MANY => {
+                    // blame claude for this one
+                    let funct2 = (v >> 10) & 0b11;
+                    match funct2 {
+                        0b00 => Self::IntImmediate(IntImmediate {
+                            dest: Register::new_rvc((v >> 7) & 0b111)?,
+                            funct: IntegerOpImmediate::ImmShift(
+                                ImmShift::ShiftRightLogical,
+                                U5::new(((v & 0b1111100) >> 2) | ((v & 0x1000) >> 7))?
+                            ),
+                            src: Register::new_rvc((v >> 7) & 0b111)?
+                        }),
+                        0b01 => Self::IntImmediate(IntImmediate {
+                            dest: Register::new_rvc((v >> 7) & 0b111)?,
+                            funct: IntegerOpImmediate::ImmShift(
+                                ImmShift::ShiftRightArithmetic,
+                                U5::new(((v & 0b1111100) >> 2) | ((v & 0x1000) >> 7))?
+                            ),
+                            src: Register::new_rvc((v >> 7) & 0b111)?
+                        }),
+                        0b10 => Self::IntImmediate(IntImmediate {
+                            dest: Register::new_rvc((v >> 7) & 0b111)?,
+                            funct: IntegerOpImmediate::Imm12(
+                                Imm12::And,
+                                I12::new_6(((v & 0b1111100) >> 2) | ((v & 0x1000) >> 7))?
+                            ),
+                            src: Register::new_rvc((v >> 7) & 0b111)?
+                        }),
+                        0b11 => {
+                            let funct2_low = (v >> 5) & 0b11;
+                            let bit12 = (v >> 12) & 1;
+                            match (bit12, funct2_low) {
+                                (0, 0b00) => Self::Int(Int {
+                                    dest: Register::new_rvc((v >> 7) & 0b111)?,
+                                    funct: IntegerFunct::Subtract,
+                                    src1: Register::new_rvc((v >> 7) & 0b111)?,
+                                    src2: Register::new_rvc((v >> 2) & 0b111)?
+                                }),
+                                (0, 0b01) => Self::Int(Int {
+                                    dest: Register::new_rvc((v >> 7) & 0b111)?,
+                                    funct: IntegerFunct::Xor,
+                                    src1: Register::new_rvc((v >> 7) & 0b111)?,
+                                    src2: Register::new_rvc((v >> 2) & 0b111)?
+                                }),
+                                (0, 0b10) => Self::Int(Int {
+                                    dest: Register::new_rvc((v >> 7) & 0b111)?,
+                                    funct: IntegerFunct::Or,
+                                    src1: Register::new_rvc((v >> 7) & 0b111)?,
+                                    src2: Register::new_rvc((v >> 2) & 0b111)?
+                                }),
+                                (0, 0b11) => Self::Int(Int {
+                                    dest: Register::new_rvc((v >> 7) & 0b111)?,
+                                    funct: IntegerFunct::And,
+                                    src1: Register::new_rvc((v >> 7) & 0b111)?,
+                                    src2: Register::new_rvc((v >> 2) & 0b111)?
+                                }),
+                                (1, _) => bail!("unknown opcode"), // reserved (C.SUBW, C.ADDW for RV64)
+                                _ => unreachable!()
+                            }
+                        },
+                        _ => unreachable!()
+                    }
+                },
                 C1_J => Self::JumpAndLink(JumpAndLink {
                     dest: Register::ZERO,
                     offset: I20::new_11(
