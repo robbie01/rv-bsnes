@@ -9,6 +9,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
+name = "include_bytes_aligned"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb3f0fd7913f9257b6862075640a029db0fff0887a3f49e00059f52b7111cf11"
+
+[[package]]
 name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -28,5 +34,6 @@ name = "rv"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "include_bytes_aligned",
  "object",
 ]

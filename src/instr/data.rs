@@ -5,8 +5,23 @@ pub struct Register(u8);
 
 impl Register {
     pub const ZERO: Self = Self(0);
-    pub const ONE: Self = Self(1);
-    pub const TWO: Self = Self(2);
+    pub const RA: Self = Self(1);
+    pub const SP: Self = Self(2);
+    pub const GP: Self = Self(3);
+    pub const TP: Self = Self(4);
+    pub const T0: Self = Self(5);
+    pub const T1: Self = Self(6);
+    pub const T2: Self = Self(7);
+    pub const S0: Self = Self(8);
+    pub const S1: Self = Self(9);
+    pub const A0: Self = Self(10);
+    pub const A1: Self = Self(11);
+    pub const A2: Self = Self(12);
+    pub const A3: Self = Self(13);
+    pub const A4: Self = Self(14);
+    pub const A5: Self = Self(15);
+    pub const A6: Self = Self(16);
+    pub const A7: Self = Self(17);
 
     pub fn new(v: impl Into<u32>) -> anyhow::Result<Self> {
         let v = v.into();
@@ -29,6 +44,12 @@ impl Register {
 impl From<Register> for u8 {
     fn from(value: Register) -> Self {
         value.0
+    }
+}
+
+impl From<Register> for usize {
+    fn from(value: Register) -> Self {
+        value.0.into()
     }
 }
 
@@ -129,6 +150,14 @@ impl I12 {
         }
     }
 
+    pub fn new_13(v: u32) -> anyhow::Result<Self> {
+        if v < (1 << 13) {
+            Ok(Self((v << 3) as i16 >> 3))
+        } else {
+            bail!("i12 out of range")
+        }
+    }
+
     pub fn new_6(v: u16) -> anyhow::Result<Self> {
         if v < (1 << 6) {
             Ok(Self((v << 10) as i16 >> 10))
@@ -163,6 +192,12 @@ impl From<I12> for u16 {
 impl From<I12> for i16 {
     fn from(value: I12) -> Self {
         value.0
+    }
+}
+
+impl From<I12> for i32 {
+    fn from(value: I12) -> Self {
+        value.0.into()
     }
 }
 
@@ -233,6 +268,7 @@ pub enum Imm12 {
     And
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImmShift {
     ShiftLeft,
@@ -241,15 +277,15 @@ pub enum ImmShift {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IntegerOpImmediate {
+pub enum IntImmediateFunct {
     Imm12(Imm12, I12),
     ImmShift(ImmShift, U5)
 }
 
-impl IntegerOpImmediate {
+impl IntImmediateFunct {
     pub fn new(v: u32, imm: I12) -> anyhow::Result<Self> {
         use self::{
-            IntegerOpImmediate::*,
+            IntImmediateFunct::*,
             Imm12::*,
             ImmShift::*
         };
@@ -486,6 +522,7 @@ impl RoundingMode {
     }
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CsrFunct {

@@ -65,7 +65,7 @@ pub struct LoadInt {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntImmediate {
     pub dest: Register,
-    pub funct: IntegerOpImmediate,
+    pub funct: IntImmediateFunct,
     pub src: Register
 }
 
@@ -166,36 +166,36 @@ pub enum FloatWidth {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fused {
-    type_: FuseType,
-    width: FloatWidth,
-    rounding_mode: RoundingMode,
-    dest: Register,
-    src1: Register,
-    src2: Register,
-    src3: Register
+    pub type_: FuseType,
+    pub width: FloatWidth,
+    pub rounding_mode: RoundingMode,
+    pub dest: Register,
+    pub src1: Register,
+    pub src2: Register,
+    pub src3: Register
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fp {
     /// NOTE: restrictions on this depending on funct
-    rounding_mode: RoundingMode,
-    funct: FloatFunct,
-    dest: Register,
+    pub rounding_mode: RoundingMode,
+    pub funct: FloatFunct,
+    pub dest: Register,
     /// NOTE: restrictions on this depending on funct
-    src1: Register,
+    pub src1: Register,
     /// NOTE: restrictions on this depending on funct
-    src2: Register
+    pub src2: Register
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Amo {
-    dest: Register,
-    src1: Register,
+    pub dest: Register,
+    pub src1: Register,
     /// NOTE: must always be 0 for lr
-    src2: Register,
-    release: bool,
-    acquire: bool,
-    funct: AmoFunct
+    pub src2: Register,
+    pub release: bool,
+    pub acquire: bool,
+    pub funct: AmoFunct
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -227,7 +227,7 @@ impl Instruction {
             0 => match v >> 13 {
                 C0_ADDI4SPN => Self::IntImmediate(IntImmediate {
                     dest: Register::new_rvc((v >> 2) & 0b111)?,
-                    funct: IntegerOpImmediate::Imm12(
+                    funct: IntImmediateFunct::Imm12(
                         Imm12::Add,
                         {
                             let imm = (v >> 5) & 0xff;
@@ -235,7 +235,7 @@ impl Instruction {
                             I12::new(nzuimm * 4)?
                         }
                     ),
-                    src: Register::TWO
+                    src: Register::SP
                 }),
                 C0_FLD => Self::LoadFp(LoadFp {
                     dest: Register::new_rvc((v >> 2) & 0b111)?,
@@ -279,11 +279,11 @@ impl Instruction {
             1 => match v >> 13 {
                 C1_ADDI => Self::IntImmediate(IntImmediate {
                     dest: Register::new((v >> 7) & 0b11111)?,
-                    funct: IntegerOpImmediate::Imm12(Imm12::Add, I12::new_6((v & 0b1111100) >> 2 | ((v & 0x1000) >> 7))?),
+                    funct: IntImmediateFunct::Imm12(Imm12::Add, I12::new_6((v & 0b1111100) >> 2 | ((v & 0x1000) >> 7))?),
                     src: Register::new((v >> 7) & 0b11111)?
                 }),
                 C1_JAL => Self::JumpAndLink(JumpAndLink {
-                    dest: Register::ONE,
+                    dest: Register::RA,
                     offset: I20::new_11(
                         ((v & 0b111000) >> 3) |
                         ((v & 0b100000000000) >> 8) |
@@ -297,7 +297,7 @@ impl Instruction {
                 }),
                 C1_LI => Self::IntImmediate(IntImmediate {
                     dest: Register::new((v >> 7) & 0b11111)?,
-                    funct: IntegerOpImmediate::Imm12(Imm12::Add, I12::new_6((v & 0b1111100) >> 2 | ((v & 0x1000) >> 7))?),
+                    funct: IntImmediateFunct::Imm12(Imm12::Add, I12::new_6((v & 0b1111100) >> 2 | ((v & 0x1000) >> 7))?),
                     src: Register::ZERO
                 }),
                 C1_LUI => match (v >> 7) & 0b11111 {
@@ -307,8 +307,8 @@ impl Instruction {
                         imm: U20::new_i6((v & 0b1111100) >> 2 | ((v & 0x1000) >> 7))?
                     }),
                     2 if v & 0b1111100 != 0 || v & 0x1000 != 0 => Self::IntImmediate(IntImmediate {
-                        dest: Register::TWO,
-                        funct: IntegerOpImmediate::Imm12(
+                        dest: Register::SP,
+                        funct: IntImmediateFunct::Imm12(
                             Imm12::Add,
                             I12::new_10(
                                 ((v & 0b1000000) >> 2) |
@@ -318,7 +318,7 @@ impl Instruction {
                                 ((v & 0b1000000000000) >> 3)
                             )?
                         ),
-                        src: Register::TWO
+                        src: Register::SP
                     }),
                     _ => bail!("unknown opcode") // reserved
                 },
@@ -328,7 +328,7 @@ impl Instruction {
                     match funct2 {
                         0b00 => Self::IntImmediate(IntImmediate {
                             dest: Register::new_rvc((v >> 7) & 0b111)?,
-                            funct: IntegerOpImmediate::ImmShift(
+                            funct: IntImmediateFunct::ImmShift(
                                 ImmShift::ShiftRightLogical,
                                 U5::new(((v & 0b1111100) >> 2) | ((v & 0x1000) >> 7))?
                             ),
@@ -336,7 +336,7 @@ impl Instruction {
                         }),
                         0b01 => Self::IntImmediate(IntImmediate {
                             dest: Register::new_rvc((v >> 7) & 0b111)?,
-                            funct: IntegerOpImmediate::ImmShift(
+                            funct: IntImmediateFunct::ImmShift(
                                 ImmShift::ShiftRightArithmetic,
                                 U5::new(((v & 0b1111100) >> 2) | ((v & 0x1000) >> 7))?
                             ),
@@ -344,7 +344,7 @@ impl Instruction {
                         }),
                         0b10 => Self::IntImmediate(IntImmediate {
                             dest: Register::new_rvc((v >> 7) & 0b111)?,
-                            funct: IntegerOpImmediate::Imm12(
+                            funct: IntImmediateFunct::Imm12(
                                 Imm12::And,
                                 I12::new_6(((v & 0b1111100) >> 2) | ((v & 0x1000) >> 7))?
                             ),
@@ -415,25 +415,25 @@ impl Instruction {
             2 => match v >> 13 {
                 C2_SLLI => Self::IntImmediate(IntImmediate {
                     dest: Register::new((v >> 7) & 0b11111)?,
-                    funct: IntegerOpImmediate::ImmShift(ImmShift::ShiftLeft, U5::new((v & 0b1111100) >> 2 | ((v & 0x1000) >> 7))?),
+                    funct: IntImmediateFunct::ImmShift(ImmShift::ShiftLeft, U5::new((v & 0b1111100) >> 2 | ((v & 0x1000) >> 7))?),
                     src: Register::new((v >> 7) & 0b11111)?,
                 }),
                 C2_FLDSP => Self::LoadFp(LoadFp {
                     dest: Register::new((v >> 7) & 0b11111)?,
                     width: FpWidth::Double,
-                    base: Register::TWO,
+                    base: Register::SP,
                     offset: I12::new(((v & 0b1100000) >> 2) | ((v & 0x1000) >> 7) | ((v & 0b11100) << 4))?
                 }),
                 C2_LWSP if (v >> 7) & 0x1f != 0 => Self::LoadInt(LoadInt {
                     dest: Register::new((v >> 7) & 0b11111)?,
                     width: LoadWidth::Word,
-                    base: Register::TWO,
+                    base: Register::SP,
                     offset: I12::new(((v & 0b1110000) >> 2) | ((v & 0x1000) >> 7) | ((v & 0b1100) << 4))?
                 }),
                 C2_FLWSP => Self::LoadFp(LoadFp {
                     dest: Register::new((v >> 7) & 0b11111)?,
                     width: FpWidth::Word,
-                    base: Register::TWO,
+                    base: Register::SP,
                     offset: I12::new(((v & 0b1110000) >> 2) | ((v & 0x1000) >> 7) | ((v & 0b1100) << 4))?
                 }),
                 C2_MANY => match (v & 0x1000 != 0, v & 0b111110000000 != 0, v & 0b1111100 != 0) {
@@ -450,7 +450,7 @@ impl Instruction {
                     }),
                     (true, false, false) => Self::System(System::Ebreak),
                     (true, true, false) => Self::JumpAndLinkRegister(JumpAndLinkRegister {
-                        dest: Register::ONE,
+                        dest: Register::RA,
                         base: Register::new((v & 0b111110000000) >> 7)?,
                         offset: I12::ZERO
                     }),
@@ -465,19 +465,19 @@ impl Instruction {
                 C2_FSDSP => Self::StoreFp(StoreFp {
                     offset: I12::new(((v & 0b1110000000) >> 1) | ((v & 0b1110000000000) >> 7))?,
                     width: FpWidth::Double,
-                    base: Register::TWO,
+                    base: Register::SP,
                     src: Register::new((v >> 2) & 0b11111)?
                 }),
                 C2_SWSP => Self::StoreInt(StoreInt {
                     offset: I12::new(((v & 0b110000000) >> 1) | ((v & 0b1111000000000) >> 7))?,
                     width: StoreWidth::Word,
-                    base: Register::TWO,
+                    base: Register::SP,
                     src: Register::new((v >> 2) & 0b11111)?
                 }),
                 C2_FSWSP => Self::StoreFp(StoreFp {
                     offset: I12::new(((v & 0b110000000) >> 1) | ((v & 0b1111000000000) >> 7))?,
                     width: FpWidth::Word,
-                    base: Register::TWO,
+                    base: Register::SP,
                     src: Register::new((v >> 2) & 0b11111)?
                 }),
                 _ => unreachable!()
@@ -498,7 +498,7 @@ impl Instruction {
             FENCE => Self::Fence,
             OP_IMM => Self::IntImmediate(IntImmediate {
                 dest: Register::new((v >> 7) & 0b11111)?,
-                funct: IntegerOpImmediate::new((v >> 12) & 0b111, I12::new(v >> 20)?)?,
+                funct: IntImmediateFunct::new((v >> 12) & 0b111, I12::new(v >> 20)?)?,
                 src: Register::new((v >> 15) & 0b11111)?
             }),
             AUIPC | LUI => Self::U(U {
@@ -523,7 +523,7 @@ impl Instruction {
                 src2: Register::new((v >> 20) & 0b11111)?
             }),
             BRANCH => Self::Branch(Branch {
-                offset: I12::new(((v >> 7) & 0b11111) | ((v >> 20) & 0b111111100000))?,
+                offset: I12::new_13(((v & 0b111100000000) >> 7) | ((v & 0b1111110000000000000000000000000) >> 20) | ((v & 0b10000000) << 4) | ((v & 0x80000000) >> 19))?,
                 funct: BranchType::new((v >> 12) & 0b111)?,
                 src1: Register::new((v >> 15) & 0b11111)?,
                 src2: Register::new((v >> 20) & 0b11111)?
@@ -591,7 +591,7 @@ impl Instruction {
                 src2: Register::new((v >> 20) & 0b11111)?,
                 src3: Register::new(v >> 27)?
             }),
-            AMO => Self::Amo(Amo {
+            AMO if (v >> 12) & 0b111 == 0b010 => Self::Amo(Amo {
                 dest: Register::new((v >> 7) & 0b11111)?,
                 src1: Register::new((v >> 15) & 0b11111)?,
                 src2: Register::new((v >> 20) & 0b11111)?,
