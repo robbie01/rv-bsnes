@@ -189,7 +189,7 @@ impl IntegerOpImmediate {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
-pub enum IntegerOp {
+pub enum IntegerFunct {
     Add,
     ShiftLeft,
     SetLessThan,
@@ -212,9 +212,9 @@ pub enum IntegerOp {
     RemainderUnsigned
 }
 
-impl IntegerOp {
+impl IntegerFunct {
     pub fn new(v: u32) -> anyhow::Result<Self> {
-        use IntegerOp::*;
+        use IntegerFunct::*;
         Ok(match v {
             0 => Add,
             1 => ShiftLeft,
@@ -267,6 +267,7 @@ impl BranchType {
     }
 }
 
+#[expect(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 enum InjectSignType {
@@ -275,6 +276,7 @@ enum InjectSignType {
     Xor
 }
 
+#[expect(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 enum MinMaxType {
@@ -282,6 +284,7 @@ enum MinMaxType {
     Maximum
 }
 
+#[expect(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 enum Signedness {
@@ -289,6 +292,7 @@ enum Signedness {
     Unsigned
 }
 
+#[expect(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 enum MoveToXSingleType {
@@ -296,6 +300,7 @@ enum MoveToXSingleType {
     Classify
 }
 
+#[expect(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 enum CompareType {
@@ -306,7 +311,7 @@ enum CompareType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
-pub enum FloatOp {
+pub enum FloatFunct {
     AddSingle = 0,
     SubtractSingle = 0b100,
     MultiplySingle = 0b1000,
@@ -337,9 +342,9 @@ pub enum FloatOp {
     ConvertFromWordDouble = 0b1101001 // rs2 = 0 for signed, 1 for unsigned
 }
 
-impl FloatOp {
+impl FloatFunct {
     pub fn new(v: u32) -> anyhow::Result<Self> {
-        use FloatOp::*;
+        use FloatFunct::*;
         Ok(match v {
             0b0000000 => AddSingle,
             0b0000100 => SubtractSingle,
@@ -393,6 +398,32 @@ impl RoundingMode {
             4 => NearestTieToMaxMagnitude,
             7 => Dynamic,
             _ => bail!("unknown rounding mode")
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum CsrFunct {
+    ReadWrite = 1,
+    ReadAndSetBits,
+    ReadAndClearBits,
+    ReadWriteImmediate = 5,
+    ReadAndSetBitsImmediate,
+    ReadAndClearBitsImmediate
+}
+
+impl CsrFunct {
+    pub fn new(v: u32) -> anyhow::Result<Self> {
+        use CsrFunct::*;
+        Ok(match v {
+            1 => ReadWrite,
+            2 => ReadAndSetBits,
+            3 => ReadAndClearBits,
+            5 => ReadWriteImmediate,
+            6 => ReadAndSetBitsImmediate,
+            7 => ReadAndClearBitsImmediate,
+            _ => bail!("unknown csr funct")
         })
     }
 }

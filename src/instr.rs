@@ -23,6 +23,8 @@ const MSUB: u32 = 0b1000111;
 const NMSUB: u32 = 0b1001011;
 const NMADD: u32 = 0b1001111;
 
+const AMO: u32 = 0b0101111;
+
 const OPCODE_MASK: u32 = 0b1111111;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,7 +66,7 @@ pub struct Store {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Op {
     pub dest: Register,
-    pub funct: IntegerOp,
+    pub funct: IntegerFunct,
     pub src1: Register,
     pub src2: Register
 }
@@ -91,9 +93,18 @@ pub struct JumpAndLinkRegister {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Csr {
+    pub dest: Register,
+    pub funct: CsrFunct,
+    pub src: Register,
+    pub csr: U12
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum System {
     Ecall,
-    Ebreak
+    Ebreak,
+    Csr(Csr)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -140,7 +151,7 @@ pub struct Fused {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OpFp {
     rounding_mode: RoundingMode,
-    funct: FloatOp,
+    funct: FloatFunct,
     dest: Register,
     src1: Register,
     src2: Register
@@ -165,6 +176,14 @@ pub enum Instruction {
 }
 
 impl Instruction {
+    pub fn next_is_compressed(next: u8) -> bool {
+        next & 0b11 != 0b11
+    }
+
+    pub fn decode_compressed(_v: u16) -> anyhow::Result<Self> {
+        bail!("compressed instruction")
+    }
+
     pub fn decode(v: u32) -> anyhow::Result<Self> {
         Ok(match v & OPCODE_MASK {
             LOAD => Self::Load(Load {
@@ -196,7 +215,7 @@ impl Instruction {
             }),
             OP => Self::Op(Op {
                 dest: Register::new((v >> 7) & 0b11111)?,
-                funct: IntegerOp::new(((v >> 12) & 0b111) | ((v >> 22) & 0b1111111000))?,
+                funct: IntegerFunct::new(((v >> 12) & 0b111) | ((v >> 22) & 0b1111111000))?,
                 src1: Register::new((v >> 15) & 0b11111)?,
                 src2: Register::new((v >> 20) & 0b11111)?
             }),
@@ -225,7 +244,15 @@ impl Instruction {
             SYSTEM => Self::System(match v >> 7 {
                 0 => System::Ecall,
                 0b10000000000000 => System::Ebreak,
-                _ => bail!("unknown SYSTEM")
+                _ => match CsrFunct::new(v >> 12 & 0b111) {
+                    Ok(funct) => System::Csr(Csr {
+                        dest: Register::new((v >> 7) & 0b11111)?,
+                        funct,
+                        src: Register::new((v >> 15) & 0b11111)?,
+                        csr: U12::new(v >> 20)?
+                    }),
+                    Err(_) => bail!("unknown SYSTEM")
+                }
             }),
             LOAD_FP => Self::LoadFp(LoadFp {
                 dest: Register::new((v >> 7) & 0b11111)?,
@@ -241,7 +268,7 @@ impl Instruction {
             }),
             OP_FP => Self::OpFp(OpFp {
                 dest: Register::new((v >> 7) & 0b11111)?,
-                funct: FloatOp::new(v >> 25)?,
+                funct: FloatFunct::new(v >> 25)?,
                 rounding_mode: RoundingMode::new((v >> 12) & 0b111)?,
                 src1: Register::new((v >> 15) & 0b11111)?,
                 src2: Register::new((v >> 20) & 0b11111)?,
@@ -265,6 +292,7 @@ impl Instruction {
                 src2: Register::new((v >> 20) & 0b11111)?,
                 src3: Register::new(v >> 27)?
             }),
+            AMO => bail!("AMO instruction"),
             i if i > OPCODE_MASK => unreachable!(),
             _ => bail!("unknown opcode")
         })
