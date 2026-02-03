@@ -10,7 +10,7 @@ fn nte(rounding_mode: RoundingMode) {
     }
 }
 
-impl<H: Hypervisor> Cpu<H> {
+impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
     fn execute_one(&mut self) -> anyhow::Result<bool> {
         let pc = self.pc;
         let pcu = self.pc as usize;
@@ -29,17 +29,17 @@ impl<H: Hypervisor> Cpu<H> {
         
         self.pc += size;
 
-        match instr {
+        let res = match instr {
             I::LoadInt(LoadInt { dest, width, base, offset }) => {
                 use LoadWidth::*;
-                let addr = self.read_x(base).wrapping_add_signed(offset.into()) as usize;
+                let addr = self.read_x(base).wrapping_add_signed(offset.into());
 
                 let v = match width {
-                    ByteUnsigned => self.memory[addr].into(),
-                    Byte => self.memory[addr] as i8 as i32 as u32,
-                    HalfUnsigned => u16::from_le_bytes(self.memory[addr..addr+2].try_into()?).into(),
-                    Half => i16::from_le_bytes(self.memory[addr..addr+2].try_into()?) as i32 as u32,
-                    Word => u32::from_le_bytes(self.memory[addr..addr+4].try_into()?)
+                    ByteUnsigned => self.load_u8(addr)?.into(),
+                    Byte => self.load_i8(addr)? as i32 as u32,
+                    HalfUnsigned => self.load_u16(addr)?.into(),
+                    Half => self.load_i16(addr)? as i32 as u32,
+                    Word => self.load_u32(addr)?
                 };
 
                 self.write_x(dest, v);
@@ -47,26 +47,24 @@ impl<H: Hypervisor> Cpu<H> {
             },
             I::StoreInt(StoreInt { offset, width, base, src }) => {
                 use StoreWidth::*;
-                let addr = self.read_x(base).wrapping_add_signed(offset.into()) as usize;
+                let addr = self.read_x(base).wrapping_add_signed(offset.into());
 
                 let v = self.read_x(src);
 
-                let dump = || format!("oob store at {pc:06X}\n{instr:?}");
-
                 match width {
-                    Byte => self.memory.get_mut(addr..addr+1).with_context(dump)?[0] = v as u8,
-                    Half => self.memory.get_mut(addr..addr+2).with_context(dump)?.copy_from_slice(&(v as u16).to_le_bytes()),
-                    Word => self.memory.get_mut(addr..addr+4).with_context(dump)?.copy_from_slice(&v.to_le_bytes())
+                    Byte => self.store_u8(addr, v as u8)?,
+                    Half => self.store_u16(addr, v as u16)?,
+                    Word => self.store_u32(addr, v)?
                 }
                 Ok(true)
             },
             I::LoadFp(LoadFp { dest, width, base, offset }) => {
                 use FpWidth::*;
-                let addr = self.read_x(base).wrapping_add_signed(offset.into()) as usize;
+                let addr = self.read_x(base).wrapping_add_signed(offset.into());
 
                 let v = match width {
-                    Word => FRegister::write_f32(f32::from_le_bytes(self.memory[addr..addr+4].try_into()?)),
-                    Double => FRegister::write_f64(f64::from_le_bytes(self.memory[addr..addr+8].try_into()?)),
+                    Word => FRegister::write_f32(self.load_f32(addr)?),
+                    Double => FRegister::write_f64(self.load_f64(addr)?),
                 };
 
                 self.write_f(dest, v);
@@ -74,13 +72,13 @@ impl<H: Hypervisor> Cpu<H> {
             },
             I::StoreFp(StoreFp { offset, width, base, src }) => {
                 use FpWidth::*;
-                let addr = self.read_x(base).wrapping_add_signed(offset.into()) as usize;
+                let addr = self.read_x(base).wrapping_add_signed(offset.into());
 
                 let v = self.read_f(src);
 
                 match width {
-                    Word => self.memory[addr..addr+4].copy_from_slice(&v.read_f32().to_le_bytes()),
-                    Double => self.memory[addr..addr+8].copy_from_slice(&v.read_f64().to_le_bytes()),
+                    Word => self.store_f32(addr, v.read_f32())?,
+                    Double => self.store_f64(addr, v.read_f64())?
                 }
                 Ok(true)
             },
@@ -422,7 +420,15 @@ impl<H: Hypervisor> Cpu<H> {
                 Ok(true)
             },
             _ => todo!("{instr:?}")
+        };
+
+        if res.is_ok() {
+            let mut h = self.hypervisor.take().unwrap();
+            h.after_instr(self, instr)?;
+            self.hypervisor = Some(h);
         }
+
+        res
     }
 
     fn continue_execution(&mut self) -> anyhow::Result<()> {

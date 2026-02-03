@@ -12,13 +12,17 @@ fn main() -> anyhow::Result<()> {
 
     let program = ElfFile32::<LittleEndian>::parse(&include_bytes_aligned!(16, "../bsnes.elf")[..])?;
     let mut cpu = Cpu::new(LinuxHypervisor::default());
-    cpu.ingest(&program)?;
+    cpu.load(&program)?;
 
-    assert_eq!(game.len(), 0x100000);
-    cpu.memory[0xf0000000..0xf0000000+game.len()].copy_from_slice(game);
+    eprintln!("calling static_init...");
+    let static_init = program.symbol_by_name("_Z41__static_initialization_and_destruction_0ii.constprop.0").context("no static_init etc")?.address() as u32;
+    cpu.call_subroutine(static_init)?;
+
+    let game_addr = cpu.memory.kmalloc(game.len()).context("couldn't alloc space for game")?;
+    cpu.memory[game_addr..game_addr+game.len()].copy_from_slice(game);
 
     let gameinfo: Vec<u8> = [
-        0xf0000000,
+        game_addr as u32,
         game.len().try_into()?,
         0,
         0xfffffffe,
@@ -27,28 +31,26 @@ fn main() -> anyhow::Result<()> {
         0xfffffffe
     ].into_iter().flat_map(u32::to_le_bytes).collect();
 
-    cpu.memory[0xf0100000..0xf0100000+gameinfo.len()].copy_from_slice(&gameinfo);
+    let gameinfo_addr = cpu.memory.kmalloc(gameinfo.len()).context("couldn't alloc space for gameinfo")?;
 
+    cpu.memory[gameinfo_addr..gameinfo_addr+gameinfo.len()].copy_from_slice(&gameinfo);
+
+    eprintln!("calling jg_init...");
     let jg_init = program.symbol_by_name("jg_init").context("no jg_init")?.address() as u32;
     cpu.call_subroutine(jg_init)?;
 
-    println!("after jg_init: {cpu:#X?}");
-
-    cpu.write_x(Register::A0, 0xf0100000);
+    eprintln!("calling jg_set_gameinfo...");
+    cpu.write_x(Register::A0, gameinfo_addr as u32);
     let jg_set_gameinfo = program.symbol_by_name("jg_set_gameinfo").context("no jg_set_gameinfo")?.address() as u32;
     cpu.call_subroutine(jg_set_gameinfo)?;
 
-    println!("after jg_set_gameinfo: {cpu:#X?}");
-
+    eprintln!("calling jg_game_load...");
     let jg_game_load = program.symbol_by_name("jg_game_load").context("no jg_game_load")?.address() as u32;
     cpu.call_subroutine(jg_game_load)?;
 
-    println!("after jg_game_load: {cpu:#X?}");
-
+    eprintln!("calling jg_deinit...");
     let jg_deinit = program.symbol_by_name("jg_deinit").context("no jg_init")?.address() as u32;
     cpu.call_subroutine(jg_deinit)?;
-
-    println!("after jg_deinit: {cpu:#X?}");
 
     Ok(())
 }

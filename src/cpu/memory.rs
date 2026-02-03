@@ -13,7 +13,8 @@ pub struct Memory {
     program: Box<[u8]>, // starts at 0
     fun_area: Box<[u8; 256*1024*1024]>, // 0xf0000000-END
 
-    mmap_bottom: usize
+    mmap_bottom: usize,
+    kmalloc_top: usize
 }
 
 impl Debug for Memory {
@@ -35,12 +36,15 @@ impl Memory {
             program: zeroed_slice(program_size),
             fun_area: zeroed_array(),
 
-            mmap_bottom: 0xfe000000
+            mmap_bottom: 0xfe000000,
+            kmalloc_top: 0xf0000000
         }
     }
 
     pub fn get(&self, range: Range<usize>) -> Option<&[u8]> {
-        if let Some(o) = shift_range(&range, 0xf0000000) && o.end <= 0xfffffff {
+        if range.start < 0x10000 {
+            None
+        } else if let Some(o) = shift_range(&range, 0xf0000000) && o.end <= 0xfffffff {
             Some(&self.fun_area[o])
         } else if range.end < self.program.len() {
             Some(&self.program[range])
@@ -50,7 +54,9 @@ impl Memory {
     }
 
     pub fn get_mut(&mut self, range: Range<usize>) -> Option<&mut [u8]> {
-        if let Some(o) = shift_range(&range, 0xf0000000) && o.end <= 0xfffffff {
+        if range.start < 0x10000 {
+            None
+        } else if let Some(o) = shift_range(&range, 0xf0000000) && o.end <= 0xfffffff {
             Some(&mut self.fun_area[o])
         } else if range.end < self.program.len() {
             Some(&mut self.program[range])
@@ -72,6 +78,18 @@ impl Memory {
         } else {
             self.mmap_bottom = new_bottom;
             Some(new_bottom)
+        }
+    }
+
+    pub fn kmalloc(&mut self, size: usize) -> Option<usize> {
+        let size = size.next_multiple_of(4);
+        let new_top = self.kmalloc_top.checked_add(size)?;
+        if new_top > 0xf1000000 {
+            None
+        } else {
+            let addr = self.kmalloc_top;
+            self.kmalloc_top = new_top;
+            Some(addr)
         }
     }
 }

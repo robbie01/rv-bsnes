@@ -241,34 +241,34 @@ impl Instruction {
                     dest: Register::new_rvc((v >> 2) & 0b111)?,
                     width: FpWidth::Double,
                     base: Register::new_rvc((v >> 7) & 0b111)?,
-                    offset: I12::new((v & 0b1110000000000) >> 7)?
+                    offset: I12::new((v & 0b1110000000000) >> 7 | ((v & 0b1100000) << 2))?
                 }),
                 C0_LW => Self::LoadInt(LoadInt {
                     dest: Register::new_rvc((v >> 2) & 0b111)?,
                     width: LoadWidth::Word,
                     base: Register::new_rvc((v >> 7) & 0b111)?,
-                    offset: I12::new((v & 0b1110000000000) >> 7)?
+                    offset: I12::new(((v & 0b1000000) >> 4) | (v & 0b1110000000000) >> 7 | ((v & 0b100000) << 1))?
                 }),
                 C0_FLW =>  Self::LoadFp(LoadFp {
                     dest: Register::new_rvc((v >> 2) & 0b111)?,
                     width: FpWidth::Word,
                     base: Register::new_rvc((v >> 7) & 0b111)?,
-                    offset: I12::new((v & 0b1110000000000) >> 7)?
+                    offset: I12::new(((v & 0b1000000) >> 4) | (v & 0b1110000000000) >> 7 | ((v & 0b100000) << 1))?
                 }),
                 C0_FSD => Self::StoreFp(StoreFp {
-                    offset: I12::new((v & 0b1110000000000) >> 7)?,
+                    offset: I12::new((v & 0b1110000000000) >> 7 | ((v & 0b1100000) << 2))?,
                     width: FpWidth::Double,
                     base: Register::new_rvc((v >> 7) & 0b111)?,
                     src: Register::new_rvc((v >> 2) & 0b111)?
                 }),
                 C0_SW => Self::StoreInt(StoreInt {
-                    offset: I12::new((v & 0b1110000000000) >> 7)?,
+                    offset: I12::new(((v & 0b1000000) >> 4) | (v & 0b1110000000000) >> 7 | ((v & 0b100000) << 1))?,
                     width: StoreWidth::Word,
                     base: Register::new_rvc((v >> 7) & 0b111)?,
                     src: Register::new_rvc((v >> 2) & 0b111)?
                 }),
                 C0_FSW => Self::StoreFp(StoreFp {
-                    offset: I12::new((v & 0b1110000000000) >> 7)?,
+                    offset: I12::new(((v & 0b1000000) >> 4) | (v & 0b1110000000000) >> 7 | ((v & 0b100000) << 1))?,
                     width: FpWidth::Word,
                     base: Register::new_rvc((v >> 7) & 0b111)?,
                     src: Register::new_rvc((v >> 2) & 0b111)?
