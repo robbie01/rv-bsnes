@@ -73,7 +73,7 @@ pub struct Cpu<H> {
     pub f: [FRegister; 32],
     pub memory: Memory,
 
-    hypervisor: Option<H>
+    hypervisor: Option<Box<H>>
 }
 
 impl<H> Cpu<H> {
@@ -84,7 +84,7 @@ impl<H> Cpu<H> {
             f: [FRegister::write_f64(0.); 32],
             memory: Memory::new(0x10000000),
 
-            hypervisor: Some(hypervisor)
+            hypervisor: Some(Box::new(hypervisor))
         };
 
         // initialize stack pointer (todo make this better LoL)
