@@ -15,7 +15,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
         let pc = self.pc;
 
         if pc == 0 {
-            bail!("tried to execute at address 0 (missing callback?)");
+            bail!("tried to execute at address 0 (missing callback?)\nra = {:06X}", self.read_x(Register::RA));
         }
 
         let (instr, size) = if I::next_is_compressed(self.load_u8(pc)?) {

@@ -138,6 +138,12 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
                 eprint!("jg: {msg}");
                 Ok(())
             },
+            0xe0000006 => { // jg_cb_frametime
+                let frametime = ctx.read_f(Register::A0).read_f64();
+
+                eprintln!("frametime = {frametime}");
+                Ok(())
+            }
             _ => Err(anyhow!("EBREAK reached\npc = {:X}\nStack trace: {:X?}", ctx.pc, self.stack))
         }
     }
@@ -224,7 +230,7 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
             }
             57 => { // close
                 let fd = ctx.read_x(Register::A0) as usize;
-                
+
                 let res = if self.fds.remove(fd).is_some() {
                     0
                 } else {

@@ -66,10 +66,13 @@ impl Memory {
         }
     }
 
+    /// Intentionally absent:
+    /// - trap range (0xe0000000-0xefffffff)
+    /// - zero range (0xfffffff1-0xffffffff)
     pub fn get_mut(&mut self, range: Range<u32>) -> Option<&mut [u8]> {
         if range.start < 0x10000 {
             None
-        } else if let Some(o) = shift_range(&range, 0xf0000000) && o.end <= 0xfffffff {
+        } else if let Some(o) = shift_range(&range, 0xf0000000) && o.end <= 0xffffff0 {
             Some(&mut self.fun_area[o.start.try_into().ok()?..o.end.try_into().ok()?])
         } else if usize::try_from(range.end).ok()? < self.program.len() {
             Some(&mut self.program[range.start.try_into().ok()?..range.end.try_into().ok()?])

@@ -59,6 +59,11 @@ fn main() -> anyhow::Result<()> {
     let jg_set_cb_log = program.symbol_by_name("jg_set_cb_log").context("no jg_set_cb_log")?.address() as u32;
     cpu.call_subroutine(jg_set_cb_log)?;
 
+    eprintln!("calling jg_set_cb_frametime...");
+    cpu.write_x(Register::A0, 0xe0000004);
+    let jg_set_cb_frametime = program.symbol_by_name("jg_set_cb_frametime").context("no jg_set_cb_frametime")?.address() as u32;
+    cpu.call_subroutine(jg_set_cb_frametime)?;
+
     eprintln!("calling jg_set_gameinfo...");
     cpu.write_x(Register::A0, gameinfo_addr);
     let jg_set_gameinfo = program.symbol_by_name("jg_set_gameinfo").context("no jg_set_gameinfo")?.address() as u32;
@@ -72,10 +77,6 @@ fn main() -> anyhow::Result<()> {
     eprintln!("calling jg_game_load...");
     let jg_game_load = program.symbol_by_name("jg_game_load").context("no jg_game_load")?.address() as u32;
     cpu.call_subroutine(jg_game_load)?;
-
-    eprintln!("calling jg_deinit...");
-    let jg_deinit = program.symbol_by_name("jg_deinit").context("no jg_init")?.address() as u32;
-    cpu.call_subroutine(jg_deinit)?;
 
     Ok(())
 }
