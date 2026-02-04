@@ -245,4 +245,12 @@ impl<H> Cpu<H> {
         }
         Ok(String::try_from(s)?)
     }
+
+    pub fn store_slice(&mut self, addr: u32, value: &[u8]) -> anyhow::Result<()> {
+        self.memory.get_mut(addr..addr.checked_add(u32::try_from(value.len())?).context("big data")?)
+            .with_context(|| format!("oob store @ {addr:06X}"))?
+            .copy_from_slice(value);
+
+        Ok(())
+    }
 }

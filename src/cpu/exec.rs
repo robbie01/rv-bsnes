@@ -18,11 +18,11 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
             bail!("tried to execute at address 0 (missing callback?)");
         }
 
-        let (instr, size) = if I::next_is_compressed(self.memory[pc]) {
-            let raw = I::decode_compressed(u16::from_le_bytes(self.memory[pc..pc+2].try_into()?))?;
+        let (instr, size) = if I::next_is_compressed(self.load_u8(pc)?) {
+            let raw = I::decode_compressed(self.load_u16(pc)?)?;
             (raw, 2)
         } else {
-            let raw = I::decode(u32::from_le_bytes(self.memory[pc..pc+4].try_into()?))?;
+            let raw = I::decode(self.load_u32(pc)?)?;
             (raw, 4)
         };
 
@@ -363,7 +363,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                     LoadReserved => {
                         ensure!(src2 == Register::ZERO);
                         let addr = self.read_x(src1);
-                        let v = u32::from_le_bytes(self.memory[addr..addr+4].try_into()?);
+                        let v = self.load_u32(addr)?;
 
                         self.write_x(dest, v);
                         Ok(true)
@@ -372,7 +372,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                         let addr = self.read_x(src1);
                         let v = self.read_x(src2);
 
-                        self.memory[addr..addr+4].copy_from_slice(&v.to_le_bytes());
+                        self.store_u32(addr, v)?;
                         self.write_x(dest, 0);
                         Ok(true)
                     },

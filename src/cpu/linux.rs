@@ -2,12 +2,20 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context as _, anyhow, bail, ensure};
 use object::{Architecture, LittleEndian, Object as _, ObjectSection, ObjectSymbol as _, elf::SHF_ALLOC, read::elf::ElfFile32};
+use stable_vec::ExternStableVec;
 
-use crate::instr::{I12, Instruction, JumpAndLink, JumpAndLinkRegister, Register};
+use crate::{fs::FILES, instr::{I12, Instruction, JumpAndLink, JumpAndLinkRegister, Register}};
+
+#[derive(Debug)]
+struct FileDescriptor {
+    data: &'static [u8],
+    pos: usize
+}
 
 #[derive(Default, Debug)]
 pub struct LinuxHypervisor<'data> {
     image: Option<&'data ElfFile32<'data, LittleEndian>>,
+    fds: ExternStableVec<FileDescriptor>,
 
     bss: u32,
     brk: u32,
@@ -71,7 +79,7 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
 
             let addr = u32::try_from(section.address())?;
             let data = section.data()?;
-            ctx.memory[addr..addr+u32::try_from(data.len())?].copy_from_slice(section.data()?);
+            ctx.store_slice(addr, data)?;
         }
 
         self.init_libc(ctx)?;
@@ -173,7 +181,7 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
 
                 ctx.write_x(Register::A0, ret);
             },
-            135 | 215 => { // rt_sigprocmask | munmap
+            135 | 215 | 233 => { // rt_sigprocmask | munmap | madvise
                 ctx.write_x(Register::A0, 0);
             }
             403 => { // clock_gettime
@@ -197,12 +205,51 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
                 ctx.write_x(Register::A0, 0);
             }
             56 => { // openat
+                let dirfd = ctx.read_x(Register::A0) as i32;
                 let path = ctx.read_x(Register::A1);
                 let path = ctx.load_string(path)?;
 
-                println!("{:06X}: openat(_, {path:?}, ...)", ctx.pc-4);
+                println!("{:06X}: openat({dirfd}, {path:?}, ...)", ctx.pc-4);
 
-                ctx.write_x(Register::A0, -2i32 as u32); // ENOENT
+                let ret = if dirfd != -100 {
+                    -9i32 as u32 // EBADF
+                } else if let Some(data) = FILES.get(&path[..]) {
+                    ensure!(self.fds.next_push_index() <= i32::MAX as usize);
+                    let fd = self.fds.push(FileDescriptor { data, pos: 0 });
+                    fd as u32
+                } else {
+                    -2i32 as u32 // ENOENT
+                };
+                ctx.write_x(Register::A0, ret);
+            }
+            57 => { // close
+                let fd = ctx.read_x(Register::A0) as usize;
+                
+                let res = if self.fds.remove(fd).is_some() {
+                    0
+                } else {
+                    -9i32 as u32 // EBADF
+                };
+                ctx.write_x(Register::A0, res);
+            }
+            63 => { // read
+                let fd = ctx.read_x(Register::A0) as usize;
+                let buf = ctx.read_x(Register::A1);
+                let count = ctx.read_x(Register::A2);
+
+                let res = if let Some(desc) = self.fds.get_mut(fd) {
+                    let mut n = 0;
+                    for addr in buf..buf+count {
+                        let Some(&c) = desc.data.get(desc.pos) else { break };
+                        ctx.store_u8(addr, c)?;
+                        desc.pos += 1;
+                        n += 1;
+                    }
+                    n
+                } else {
+                    -9i32 as u32 // EBADF
+                };
+                ctx.write_x(Register::A0, res);
             }
             whence => {
                 println!("\nstack: {:X?}\n{:06X}: ECALL {whence} ({:X})", self.stack, ctx.pc-4, ctx.read_x(Register::A0));

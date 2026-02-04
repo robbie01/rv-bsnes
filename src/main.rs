@@ -6,6 +6,7 @@ use crate::{cpu::{Cpu, linux::LinuxHypervisor}, instr::Register};
 
 mod instr;
 mod cpu;
+mod fs;
 
 fn main() -> anyhow::Result<()> {
     let game = include_bytes!("../lttp.sfc");
@@ -25,7 +26,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let game_addr = cpu.memory.kmalloc(game.len().try_into()?).context("couldn't alloc space for game")?;
-    cpu.memory[game_addr..game_addr+u32::try_from(game.len())?].copy_from_slice(game);
+    cpu.store_slice(game_addr, game)?;
 
     let gameinfo: Vec<u8> = [
         game_addr,
@@ -37,7 +38,7 @@ fn main() -> anyhow::Result<()> {
         0xfffffffe
     ].into_iter().flat_map(u32::to_le_bytes).collect();
     let gameinfo_addr = cpu.memory.kmalloc(gameinfo.len().try_into()?).context("couldn't alloc space for gameinfo")?;
-    cpu.memory[gameinfo_addr..gameinfo_addr+u32::try_from(gameinfo.len())?].copy_from_slice(&gameinfo);
+    cpu.store_slice(gameinfo_addr, &gameinfo)?;
 
     let pathinfo: Vec<u8> = [
         0,
@@ -47,7 +48,7 @@ fn main() -> anyhow::Result<()> {
         0xfffffffe
     ].into_iter().flat_map(u32::to_le_bytes).collect();
     let pathinfo_addr = cpu.memory.kmalloc(pathinfo.len().try_into()?).context("couldn't alloc space for pathinfo")?;
-    cpu.memory[pathinfo_addr..pathinfo_addr+u32::try_from(pathinfo.len())?].copy_from_slice(&pathinfo);
+    cpu.store_slice(pathinfo_addr, &pathinfo)?;
 
     eprintln!("calling jg_init...");
     let jg_init = program.symbol_by_name("jg_init").context("no jg_init")?.address() as u32;

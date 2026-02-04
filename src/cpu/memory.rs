@@ -55,7 +55,9 @@ impl Memory {
         } else if range.start >= 0xe0000000 && range.end < 0xf0000000 {
             // Callback
             let maxlen = 4 - (range.start % 4);
-            assert!(range.end - range.start <= maxlen);
+            if range.end - range.start > maxlen {
+                return None
+            }
             let len = range.end - range.start;
             let begin = (range.start % 4) as usize;
             Some(&TRAP[begin..begin + len as usize])
@@ -74,11 +76,6 @@ impl Memory {
         } else {
             None
         }
-    }
-
-    #[expect(dead_code)]
-    pub fn put_u32(&mut self, addr: u32, val: u32) {
-        self[addr..addr+4].copy_from_slice(&val.to_le_bytes());
     }
 
     pub fn mmap_anon(&mut self, size: u32) -> Option<u32> {
