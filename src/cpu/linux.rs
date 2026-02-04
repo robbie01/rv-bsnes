@@ -57,6 +57,8 @@ impl<'data> LinuxHypervisor<'data> {
 }
 
 impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
+    type Object = ElfFile32<'data, LittleEndian>;
+
     fn load<'this>(&'this mut self, ctx: &mut super::Cpu<Self>, obj: &'data ElfFile32<'data, LittleEndian>) -> anyhow::Result<()> where 'data: 'this {
         ensure!(self.image.is_none());
         ensure!(obj.architecture() == Architecture::Riscv32);
@@ -87,15 +89,18 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
         Ok(())
     }
 
+    fn symbol(&self, sym: &str) -> anyhow::Result<u32> {
+        Ok(self.image.as_ref().context("no image")?
+            .symbol_by_name(sym).context("sym not found")?
+            .address().try_into()?)
+    }
+
     #[inline(always)]
     fn before_instr(&mut self, ctx: &mut super::Cpu<Self>, instr: Instruction) -> anyhow::Result<()> {
         if ERROR_ROUTINES.contains(&ctx.pc) {
             bail!("error routine reached\nstack: {:X?}", self.stack);
         }
-
-        if ctx.pc == 0x71fe1a {
-            self.breakpoint_reached = true;
-        }
+        
         if self.breakpoint_reached {
             print!("\na0 = {:X}\nstack: {:X?}\n{:X}: {instr:?}", ctx.read_x(Register::A0), self.stack, ctx.pc);
         }
@@ -215,7 +220,7 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
                 let path = ctx.read_x(Register::A1);
                 let path = ctx.load_string(path)?;
 
-                println!("{:06X}: openat({dirfd}, {path:?}, ...)", ctx.pc-4);
+                // println!("{:06X}: openat({dirfd}, {path:?}, ...)", ctx.pc-4);
 
                 let ret = if dirfd != -100 {
                     -9i32 as u32 // EBADF

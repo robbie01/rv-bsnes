@@ -455,4 +455,9 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
         }
         Ok(())
     }
+
+    pub fn call_subroutine_by_name(&mut self, sub: &str) -> anyhow::Result<()> {
+        let addr = self.hypervisor.as_ref().unwrap().symbol(sub)?;
+        self.call_subroutine(addr)
+    }
 }

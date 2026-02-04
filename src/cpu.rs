@@ -5,7 +5,6 @@ pub mod linux;
 use std::fmt::Debug;
 
 use anyhow::{Context, ensure};
-use object::{LittleEndian, read::elf::ElfFile32};
 
 use crate::instr::{Instruction, Register};
 use memory::Memory;
@@ -55,9 +54,13 @@ impl Debug for FRegister {
 }
 
 pub trait Hypervisor<'data>: Sized {
-    fn load<'this>(&'this mut self, ctx: &mut Cpu<Self>, obj: &'data ElfFile32<'data, LittleEndian>) -> anyhow::Result<()> where 'data: 'this;
+    type Object: 'data;
+
+    fn load<'this>(&'this mut self, ctx: &mut Cpu<Self>, obj: &'data Self::Object) -> anyhow::Result<()> where 'data: 'this;
     fn before_instr(&mut self, ctx: &mut Cpu<Self>, instr: Instruction) -> anyhow::Result<()>;
     fn after_instr(&mut self, ctx: &mut Cpu<Self>, instr: Instruction) -> anyhow::Result<()>;
+
+    fn symbol(&self, sym: &str) -> anyhow::Result<u32>;
 
     fn ebreak(&mut self, ctx: &mut Cpu<Self>) -> anyhow::Result<()>;
     fn ecall(&mut self, ctx: &mut Cpu<Self>) -> anyhow::Result<()>;
@@ -116,7 +119,7 @@ impl<H> Cpu<H> {
         self.f[usize::from(f)] = v;
     }
 
-    pub fn load<'data>(&mut self, elf: &'data ElfFile32<'data, LittleEndian>) -> anyhow::Result<()> where H: Hypervisor<'data> {
+    pub fn load<'data>(&mut self, elf: &'data H::Object) -> anyhow::Result<()> where H: Hypervisor<'data> {
         let mut h = self.hypervisor.take().unwrap();
         h.load(self, elf)?;
         self.hypervisor = Some(h);

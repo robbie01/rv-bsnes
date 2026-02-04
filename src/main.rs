@@ -51,32 +51,26 @@ fn main() -> anyhow::Result<()> {
     cpu.store_slice(pathinfo_addr, &pathinfo)?;
 
     eprintln!("calling jg_init...");
-    let jg_init = program.symbol_by_name("jg_init").context("no jg_init")?.address() as u32;
-    cpu.call_subroutine(jg_init)?;
+    cpu.call_subroutine_by_name("jg_init")?;
 
     eprintln!("calling jg_set_cb_log...");
     cpu.write_x(Register::A0, 0xe0000000);
-    let jg_set_cb_log = program.symbol_by_name("jg_set_cb_log").context("no jg_set_cb_log")?.address() as u32;
-    cpu.call_subroutine(jg_set_cb_log)?;
+    cpu.call_subroutine_by_name("jg_set_cb_log")?;
 
     eprintln!("calling jg_set_cb_frametime...");
     cpu.write_x(Register::A0, 0xe0000004);
-    let jg_set_cb_frametime = program.symbol_by_name("jg_set_cb_frametime").context("no jg_set_cb_frametime")?.address() as u32;
-    cpu.call_subroutine(jg_set_cb_frametime)?;
+    cpu.call_subroutine_by_name("jg_set_cb_frametime")?;
 
     eprintln!("calling jg_set_gameinfo...");
     cpu.write_x(Register::A0, gameinfo_addr);
-    let jg_set_gameinfo = program.symbol_by_name("jg_set_gameinfo").context("no jg_set_gameinfo")?.address() as u32;
-    cpu.call_subroutine(jg_set_gameinfo)?;
+    cpu.call_subroutine_by_name("jg_set_gameinfo")?;
 
     eprintln!("calling jg_set_paths...");
     cpu.write_x(Register::A0, pathinfo_addr);
-    let jg_set_paths = program.symbol_by_name("jg_set_paths").context("no jg_set_paths")?.address() as u32;
-    cpu.call_subroutine(jg_set_paths)?;
+    cpu.call_subroutine_by_name("jg_set_paths")?;
 
     eprintln!("calling jg_game_load...");
-    let jg_game_load = program.symbol_by_name("jg_game_load").context("no jg_game_load")?.address() as u32;
-    cpu.call_subroutine(jg_game_load)?;
+    cpu.call_subroutine_by_name("jg_game_load")?;
 
     Ok(())
 }
