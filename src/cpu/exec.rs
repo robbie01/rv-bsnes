@@ -13,13 +13,16 @@ fn nte(rounding_mode: RoundingMode) {
 impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
     fn execute_one(&mut self) -> anyhow::Result<bool> {
         let pc = self.pc;
-        let pcu = self.pc as usize;
 
-        let (instr, size) = if I::next_is_compressed(self.memory[pcu]) {
-            let raw = I::decode_compressed(u16::from_le_bytes(self.memory[pcu..pcu+2].try_into()?))?;
+        if pc == 0 {
+            bail!("tried to execute at address 0 (missing callback?)");
+        }
+
+        let (instr, size) = if I::next_is_compressed(self.memory[pc]) {
+            let raw = I::decode_compressed(u16::from_le_bytes(self.memory[pc..pc+2].try_into()?))?;
             (raw, 2)
         } else {
-            let raw = I::decode(u32::from_le_bytes(self.memory[pcu..pcu+4].try_into()?))?;
+            let raw = I::decode(u32::from_le_bytes(self.memory[pc..pc+4].try_into()?))?;
             (raw, 4)
         };
 
@@ -359,14 +362,14 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                 match funct {
                     LoadReserved => {
                         ensure!(src2 == Register::ZERO);
-                        let addr = self.read_x(src1).try_into()?;
+                        let addr = self.read_x(src1);
                         let v = u32::from_le_bytes(self.memory[addr..addr+4].try_into()?);
 
                         self.write_x(dest, v);
                         Ok(true)
                     },
                     StoreConditional => {
-                        let addr = self.read_x(src1).try_into()?;
+                        let addr = self.read_x(src1);
                         let v = self.read_x(src2);
 
                         self.memory[addr..addr+4].copy_from_slice(&v.to_le_bytes());
@@ -374,7 +377,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                         Ok(true)
                     },
                     Swap => {
-                        let addr = self.read_x(src1).try_into()?;
+                        let addr = self.read_x(src1);
                         let old = self.load_u32(addr)?;
                         self.store_u32(addr, self.read_x(src2))?;
                         self.write_x(dest, old);

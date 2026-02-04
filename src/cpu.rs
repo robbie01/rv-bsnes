@@ -128,8 +128,6 @@ impl<H> Cpu<H> {
 impl<H> Cpu<H> {
     #[inline(always)]
     pub fn load_u32(&self, addr: u32) -> anyhow::Result<u32> {
-        let addr = usize::try_from(addr)?;
-
         Ok(u32::from_le_bytes(
             self.memory.get(addr..addr+4)
             .with_context(|| format!("oob load @ {addr:06X} (next pc = {:X})", self.pc))?
@@ -139,8 +137,6 @@ impl<H> Cpu<H> {
 
     #[inline(always)]
     pub fn load_u16(&self, addr: u32) -> anyhow::Result<u16> {
-        let addr = usize::try_from(addr)?;
-
         Ok(u16::from_le_bytes(
             self.memory.get(addr..addr+2)
             .with_context(|| format!("oob load @ {addr:06X} (next pc = {:X})", self.pc))?
@@ -150,8 +146,6 @@ impl<H> Cpu<H> {
 
     #[inline(always)]
     pub fn load_i16(&self, addr: u32) -> anyhow::Result<i16> {
-        let addr = usize::try_from(addr)?;
-
         Ok(i16::from_le_bytes(
             self.memory.get(addr..addr+2)
             .with_context(|| format!("oob load @ {addr:06X} (next pc = {:X})", self.pc))?
@@ -161,8 +155,6 @@ impl<H> Cpu<H> {
 
     #[inline(always)]
     pub fn load_u8(&self, addr: u32) -> anyhow::Result<u8> {
-        let addr = usize::try_from(addr)?;
-
         Ok(
             self.memory.get(addr..addr+1)
             .with_context(|| format!("oob load @ {addr:06X} (next pc = {:X})", self.pc))?
@@ -172,8 +164,6 @@ impl<H> Cpu<H> {
 
     #[inline(always)]
     pub fn load_i8(&self, addr: u32) -> anyhow::Result<i8> {
-        let addr = usize::try_from(addr)?;
-
         Ok(
             self.memory.get(addr..addr+1)
             .with_context(|| format!("oob load @ {addr:06X} (next pc = {:X})", self.pc))?
@@ -183,8 +173,6 @@ impl<H> Cpu<H> {
 
     #[inline(always)]
     pub fn load_f32(&self, addr: u32) -> anyhow::Result<f32> {
-        let addr = usize::try_from(addr)?;
-
         Ok(f32::from_le_bytes(
             self.memory.get(addr..addr+4)
             .with_context(|| format!("oob load @ {addr:06X} (next pc = {:X})", self.pc))?
@@ -194,8 +182,6 @@ impl<H> Cpu<H> {
 
     #[inline(always)]
     pub fn load_f64(&self, addr: u32) -> anyhow::Result<f64> {
-        let addr = usize::try_from(addr)?;
-
         Ok(f64::from_le_bytes(
             self.memory.get(addr..addr+8)
             .with_context(|| format!("oob load @ {addr:06X} (next pc = {:X})", self.pc))?
@@ -205,8 +191,6 @@ impl<H> Cpu<H> {
 
     #[inline(always)]
     pub fn store_u32(&mut self, addr: u32, value: u32) -> anyhow::Result<()> {
-        let addr = usize::try_from(addr)?;
-
         self.memory.get_mut(addr..addr+4)
             .with_context(|| format!("oob store @ {addr:06X} (next pc = {:X})", self.pc))?
             .copy_from_slice(&value.to_le_bytes());
@@ -216,8 +200,6 @@ impl<H> Cpu<H> {
 
     #[inline(always)]
     pub fn store_u16(&mut self, addr: u32, value: u16) -> anyhow::Result<()> {
-        let addr = usize::try_from(addr)?;
-
         self.memory.get_mut(addr..addr+2)
             .with_context(|| format!("oob store @ {addr:06X} (next pc = {:X})", self.pc))?
             .copy_from_slice(&value.to_le_bytes());
@@ -227,8 +209,6 @@ impl<H> Cpu<H> {
 
     #[inline(always)]
     pub fn store_u8(&mut self, addr: u32, value: u8) -> anyhow::Result<()> {
-        let addr = usize::try_from(addr)?;
-
         self.memory.get_mut(addr..addr+1)
             .with_context(|| format!("oob store @ {addr:06X} (next pc = {:X})", self.pc))?
             .copy_from_slice(&[value]);
@@ -238,8 +218,6 @@ impl<H> Cpu<H> {
 
     #[inline(always)]
     pub fn store_f32(&mut self, addr: u32, value: f32) -> anyhow::Result<()> {
-        let addr = usize::try_from(addr)?;
-
         self.memory.get_mut(addr..addr+4)
             .with_context(|| format!("oob store @ {addr:06X} (next pc = {:X})", self.pc))?
             .copy_from_slice(&value.to_le_bytes());
@@ -249,12 +227,22 @@ impl<H> Cpu<H> {
 
     #[inline(always)]
     pub fn store_f64(&mut self, addr: u32, value: f64) -> anyhow::Result<()> {
-        let addr = usize::try_from(addr)?;
-
         self.memory.get_mut(addr..addr+8)
             .with_context(|| format!("oob store @ {addr:06X} (next pc = {:X})", self.pc))?
             .copy_from_slice(&value.to_le_bytes());
 
         Ok(())
+    }
+
+    pub fn load_string(&self, addr: u32) -> anyhow::Result<String> {
+        let mut s = Vec::new();
+        for i in addr.. {
+            let c = self.load_u8(i)?;
+            if c == 0 {
+                break;
+            }
+            s.push(c);
+        }
+        Ok(String::try_from(s)?)
     }
 }

@@ -8,13 +8,18 @@ fn zeroed_slice(n: usize) -> Box<[u8]> {
     unsafe { Box::new_zeroed_slice(n).assume_init() }
 }
 
+const TRAP: [u8; 4] = [
+    0x02, 0x90, // c.ebreak
+    0x82, 0x80  // c.ret
+];
+
 #[derive(Clone)]
 pub struct Memory {
     program: Box<[u8]>, // starts at 0
     fun_area: Box<[u8; 256*1024*1024]>, // 0xf0000000-END
 
-    mmap_bottom: usize,
-    kmalloc_top: usize
+    mmap_bottom: u32,
+    kmalloc_top: u32
 }
 
 impl Debug for Memory {
@@ -25,7 +30,7 @@ impl Debug for Memory {
 
 pub const BEGINNING_STACK_TOP: u32 = 0xfffffff0;
 
-fn shift_range(r: &Range<usize>, off: usize) -> Option<Range<usize>> {
+fn shift_range(r: &Range<u32>, off: u32) -> Option<Range<u32>> {
     Some(r.start.checked_sub(off)?..r.end.checked_sub(off)?)
 }
 
@@ -40,36 +45,43 @@ impl Memory {
         }
     }
 
-    pub fn get(&self, range: Range<usize>) -> Option<&[u8]> {
+    pub fn get(&self, range: Range<u32>) -> Option<&[u8]> {
         if range.start < 0x10000 {
             None
         } else if let Some(o) = shift_range(&range, 0xf0000000) && o.end <= 0xfffffff {
-            Some(&self.fun_area[o])
-        } else if range.end < self.program.len() {
-            Some(&self.program[range])
+            Some(&self.fun_area[o.start.try_into().ok()?..o.end.try_into().ok()?])
+        } else if usize::try_from(range.end).ok()? < self.program.len() {
+            Some(&self.program[range.start.try_into().ok()?..range.end.try_into().ok()?])
+        } else if range.start >= 0xe0000000 && range.end < 0xf0000000 {
+            // Callback
+            let maxlen = 4 - (range.start % 4);
+            assert!(range.end - range.start <= maxlen);
+            let len = range.end - range.start;
+            let begin = (range.start % 4) as usize;
+            Some(&TRAP[begin..begin + len as usize])
         } else {
             None
         }
     }
 
-    pub fn get_mut(&mut self, range: Range<usize>) -> Option<&mut [u8]> {
+    pub fn get_mut(&mut self, range: Range<u32>) -> Option<&mut [u8]> {
         if range.start < 0x10000 {
             None
         } else if let Some(o) = shift_range(&range, 0xf0000000) && o.end <= 0xfffffff {
-            Some(&mut self.fun_area[o])
-        } else if range.end < self.program.len() {
-            Some(&mut self.program[range])
+            Some(&mut self.fun_area[o.start.try_into().ok()?..o.end.try_into().ok()?])
+        } else if usize::try_from(range.end).ok()? < self.program.len() {
+            Some(&mut self.program[range.start.try_into().ok()?..range.end.try_into().ok()?])
         } else {
             None
         }
     }
 
     #[expect(dead_code)]
-    pub fn put_u32(&mut self, addr: usize, val: u32) {
+    pub fn put_u32(&mut self, addr: u32, val: u32) {
         self[addr..addr+4].copy_from_slice(&val.to_le_bytes());
     }
 
-    pub fn mmap_anon(&mut self, size: usize) -> Option<usize> {
+    pub fn mmap_anon(&mut self, size: u32) -> Option<u32> {
         let size = size.next_multiple_of(4096);
         let new_bottom = self.mmap_bottom.checked_sub(size)?;
         if new_bottom < 0xf1000000 {
@@ -80,7 +92,7 @@ impl Memory {
         }
     }
 
-    pub fn kmalloc(&mut self, size: usize) -> Option<usize> {
+    pub fn kmalloc(&mut self, size: u32) -> Option<u32> {
         let size = size.next_multiple_of(4);
         let new_top = self.kmalloc_top.checked_add(size)?;
         if new_top > 0xf1000000 {
@@ -93,30 +105,30 @@ impl Memory {
     }
 }
 
-impl Index<usize> for Memory {
+impl Index<u32> for Memory {
     type Output = u8;
 
-    fn index(&self, index: usize) -> &Self::Output {
+    fn index(&self, index: u32) -> &Self::Output {
         &self[index..index+1][0]
     }
 }
 
-impl IndexMut<usize> for Memory {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+impl IndexMut<u32> for Memory {
+    fn index_mut(&mut self, index: u32) -> &mut Self::Output {
         &mut self[index..index+1][0]
     }
 }
 
-impl Index<Range<usize>> for Memory {
+impl Index<Range<u32>> for Memory {
     type Output = [u8];
 
-    fn index(&self, index: Range<usize>) -> &Self::Output {
+    fn index(&self, index: Range<u32>) -> &Self::Output {
         self.get(index).unwrap()
     }
 }
 
-impl IndexMut<Range<usize>> for Memory {
-    fn index_mut(&mut self, index: Range<usize>) -> &mut Self::Output {
+impl IndexMut<Range<u32>> for Memory {
+    fn index_mut(&mut self, index: Range<u32>) -> &mut Self::Output {
         self.get_mut(index).unwrap()
     }
 }

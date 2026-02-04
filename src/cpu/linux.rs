@@ -1,4 +1,6 @@
-use anyhow::{Context as _, anyhow, ensure};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use anyhow::{Context as _, anyhow, bail, ensure};
 use object::{Architecture, LittleEndian, Object as _, ObjectSection, ObjectSymbol as _, elf::SHF_ALLOC, read::elf::ElfFile32};
 
 use crate::instr::{I12, Instruction, JumpAndLink, JumpAndLinkRegister, Register};
@@ -16,7 +18,13 @@ pub struct LinuxHypervisor<'data> {
 // TODO: synthesize __init_libc (https://github.com/kraj/musl/blob/kraj/master/src/env/__libc_start_main.c)
 // (this initializes auxv)
 
-const TCB_SIZE: usize = 0x70;
+const ERROR_ROUTINES: [u32; 2] = [
+    0x6001cc, // std::__throw_logic_error
+    // 0x6cb75c, // __cxxabiv1::__cxa_allocate_exception
+    0x6cc2a6, // __cxxabiv1::__cxa_throw
+];
+
+const TCB_SIZE: u32 = 0x70;
 
 impl<'data> LinuxHypervisor<'data> {
     // __init_libc
@@ -25,12 +33,12 @@ impl<'data> LinuxHypervisor<'data> {
         let libc: u32 = image.symbol_by_name("__libc").context("no __libc")?.address().try_into()?;
 
         let auxv_addr = ctx.memory.kmalloc(8).context("couldn't alloc auxv")?;
-        ctx.store_u32(libc.checked_add(8).context("bad __libc")?, auxv_addr as u32)?;
+        ctx.store_u32(libc.checked_add(8).context("bad __libc")?, auxv_addr)?;
 
         // page_size
         ctx.store_u32(libc.checked_add(0x1c).context("bad __libc")?, 4096)?;
 
-        let tp = (ctx.memory.kmalloc(TCB_SIZE).context("couldn't allocate tcb")? + TCB_SIZE) as u32;
+        let tp = ctx.memory.kmalloc(TCB_SIZE).context("couldn't allocate tcb")? + TCB_SIZE;
         ctx.write_x(Register::TP, tp);
 
         let utf8_locale: u32 = image.symbol_by_name("__c_dot_utf8_locale").context("no __c_dot_utf8_locale")?.address().try_into()?;
@@ -61,9 +69,9 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
                 continue;
             }
 
-            let addr = usize::try_from(section.address())?;
+            let addr = u32::try_from(section.address())?;
             let data = section.data()?;
-            ctx.memory[addr..addr+data.len()].copy_from_slice(section.data()?);
+            ctx.memory[addr..addr+u32::try_from(data.len())?].copy_from_slice(section.data()?);
         }
 
         self.init_libc(ctx)?;
@@ -73,7 +81,11 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
 
     #[inline(always)]
     fn before_instr(&mut self, ctx: &mut super::Cpu<Self>, instr: Instruction) -> anyhow::Result<()> {
-        if ctx.pc == 0x632d4a {
+        if ERROR_ROUTINES.contains(&ctx.pc) {
+            bail!("error routine reached\nstack: {:X?}", self.stack);
+        }
+
+        if ctx.pc == 0x71fe1a {
             self.breakpoint_reached = true;
         }
         if self.breakpoint_reached {
@@ -105,8 +117,21 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
     }
 
     #[inline(always)]
-    fn ebreak(&mut self, _ctx: &mut super::Cpu<Self>) -> anyhow::Result<()> {
-        Err(anyhow!("EBREAK reached\nStack trace: {:X?}", self.stack))
+    fn ebreak(&mut self, ctx: &mut super::Cpu<Self>) -> anyhow::Result<()> {
+        match ctx.pc {
+            0xe0000002 => { // jg_cb_log
+                let addr = ctx.read_x(Register::A1);
+                let mut msg = ctx.load_string(addr)?;
+                if msg.contains("%s") {
+                    let addr = ctx.read_x(Register::A2);
+
+                    msg = msg.replacen("%s", &ctx.load_string(addr)?, 1);
+                }
+                eprint!("jg: {msg}");
+                Ok(())
+            },
+            _ => Err(anyhow!("EBREAK reached\npc = {:X}\nStack trace: {:X?}", ctx.pc, self.stack))
+        }
     }
 
     #[inline(always)]
@@ -133,28 +158,54 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
                 } else if flags & 0x10 != 0 { // MAP_FIXED
                     -12i32 as u32 // ENOMEM
                 } else {
-                    let alloc = ctx.memory.mmap_anon(length.try_into()?);
+                    let alloc = ctx.memory.mmap_anon(length);
                     match alloc {
-                        Some(addr) => addr.try_into()?,
+                        Some(addr) => addr,
                         None => -12i32 as u32 // ENOMEM
                     }
                 };
 
-                let neg = (-4095..=-1).contains(&(ret as i32));
-                let sign = if neg { "-" } else { "" };
+                // let neg = (-4095..=-1).contains(&(ret as i32));
+                // let sign = if neg { "-" } else { "" };
 
                 // if neg { println!("\nstack: {:X?}", self.stack) }
-                println!("{:06X}: mmap(0x{_addr:X}, {length}, 0b{_prot:03b}, 0x{flags:X}, {_fd}) = {sign}0x{:X}", ctx.pc-4, if neg { -(ret as i32) } else { ret as i32 });
+                // println!("{:06X}: mmap(0x{_addr:X}, {length}, 0b{_prot:03b}, 0x{flags:X}, {_fd}) = {sign}0x{:X}", ctx.pc-4, if neg { -(ret as i32) } else { ret as i32 });
 
                 ctx.write_x(Register::A0, ret);
             },
-            135 => { // rt_sigprocmask
+            135 | 215 => { // rt_sigprocmask | munmap
                 ctx.write_x(Register::A0, 0);
             }
+            403 => { // clock_gettime
+                let _clockid = ctx.read_x(Register::A0);
+                let timespec = ctx.read_x(Register::A1);
+
+                let time = SystemTime::now().duration_since(UNIX_EPOCH)?;
+
+                /*
+                 * struct __kernel_timespec {
+                 *     __kernel_time64_t tv_sec;
+                 *     long long         tv_nsec;
+                 * };
+                 */
+                
+                ctx.store_u32(timespec, time.as_secs() as u32)?;
+                ctx.store_u32(timespec+4, (time.as_secs() >> 32) as u32)?;
+                ctx.store_u32(timespec+8, time.subsec_nanos())?;
+                ctx.store_u32(timespec+12, 0)?;
+                
+                ctx.write_x(Register::A0, 0);
+            }
+            56 => { // openat
+                let path = ctx.read_x(Register::A1);
+                let path = ctx.load_string(path)?;
+
+                println!("{:06X}: openat(_, {path:?}, ...)", ctx.pc-4);
+
+                ctx.write_x(Register::A0, -2i32 as u32); // ENOENT
+            }
             whence => {
-                println!("{:06X}: ECALL {whence} ({:X})", ctx.pc-4, ctx.read_x(Register::A0));
-                println!("{:X?}", self.stack);
-                println!();
+                println!("\nstack: {:X?}\n{:06X}: ECALL {whence} ({:X})", self.stack, ctx.pc-4, ctx.read_x(Register::A0));
                 ctx.write_x(Register::A0, u32::MAX); // no errno LOL
             }
         }
