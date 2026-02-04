@@ -373,6 +373,13 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                         self.write_x(dest, 0);
                         Ok(true)
                     },
+                    Swap => {
+                        let addr = self.read_x(src1).try_into()?;
+                        let old = self.load_u32(addr)?;
+                        self.store_u32(addr, self.read_x(src2))?;
+                        self.write_x(dest, old);
+                        Ok(true)
+                    }
                     _ => todo!("amo {funct:?}")
                 }
             }

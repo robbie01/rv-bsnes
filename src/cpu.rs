@@ -87,8 +87,6 @@ impl<H> Cpu<H> {
         // initialize stack pointer (todo make this better LoL)
         this.write_x(Register::SP, memory::BEGINNING_STACK_TOP);
 
-        this.write_x(Register::TP, memory::TP);
-
         this
     }
 

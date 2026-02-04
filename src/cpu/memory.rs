@@ -24,7 +24,6 @@ impl Debug for Memory {
 }
 
 pub const BEGINNING_STACK_TOP: u32 = 0xfffffff0;
-pub const TP: u32 = 0xff000000;
 
 fn shift_range(r: &Range<usize>, off: usize) -> Option<Range<usize>> {
     Some(r.start.checked_sub(off)?..r.end.checked_sub(off)?)
@@ -36,7 +35,7 @@ impl Memory {
             program: zeroed_slice(program_size),
             fun_area: zeroed_array(),
 
-            mmap_bottom: 0xfe000000,
+            mmap_bottom: 0xff000000,
             kmalloc_top: 0xf0000000
         }
     }

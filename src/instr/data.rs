@@ -491,7 +491,7 @@ impl FloatFunct {
             0b1110001 => ClassifyDouble,
             0b1100001 => ConvertToWordDouble,
             0b1101001 => ConvertFromWordDouble,
-            _ => bail!("unknown branch type")
+            _ => bail!("unknown float funct")
         })
     }
 }

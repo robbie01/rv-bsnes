@@ -16,16 +16,25 @@ pub struct LinuxHypervisor<'data> {
 // TODO: synthesize __init_libc (https://github.com/kraj/musl/blob/kraj/master/src/env/__libc_start_main.c)
 // (this initializes auxv)
 
+const TCB_SIZE: usize = 0x70;
+
 impl<'data> LinuxHypervisor<'data> {
     // __init_libc
     fn init_libc(&mut self, ctx: &mut super::Cpu<Self>) -> anyhow::Result<()> {
-        let libc: u32 = self.image.as_ref().unwrap().symbol_by_name("__libc").context("no __libc")?.address().try_into()?;
+        let image = self.image.as_ref().unwrap();
+        let libc: u32 = image.symbol_by_name("__libc").context("no __libc")?.address().try_into()?;
 
         let auxv_addr = ctx.memory.kmalloc(8).context("couldn't alloc auxv")?;
         ctx.store_u32(libc.checked_add(8).context("bad __libc")?, auxv_addr as u32)?;
 
         // page_size
         ctx.store_u32(libc.checked_add(0x1c).context("bad __libc")?, 4096)?;
+
+        let tp = (ctx.memory.kmalloc(TCB_SIZE).context("couldn't allocate tcb")? + TCB_SIZE) as u32;
+        ctx.write_x(Register::TP, tp);
+
+        let utf8_locale: u32 = image.symbol_by_name("__c_dot_utf8_locale").context("no __c_dot_utf8_locale")?.address().try_into()?;
+        ctx.store_u32(tp - 0x18, utf8_locale)?;
 
         Ok(())
     }
@@ -64,11 +73,11 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
 
     #[inline(always)]
     fn before_instr(&mut self, ctx: &mut super::Cpu<Self>, instr: Instruction) -> anyhow::Result<()> {
-        if ctx.pc == 0x60550e {
+        if ctx.pc == 0x632d4a {
             self.breakpoint_reached = true;
         }
         if self.breakpoint_reached {
-            print!("{:X}: {instr:?}", ctx.pc);
+            print!("\na0 = {:X}\nstack: {:X?}\n{:X}: {instr:?}", ctx.read_x(Register::A0), self.stack, ctx.pc);
         }
 
         match instr {
@@ -134,8 +143,8 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
                 let neg = (-4095..=-1).contains(&(ret as i32));
                 let sign = if neg { "-" } else { "" };
 
-                if neg { println!("\nstack: {:X?}", self.stack) }
-                println!("{:06X}: mmap(0x{_addr:X}, {length}, {_prot:b}, 0x{flags:X}, {_fd}) = {sign}0x{:X}", ctx.pc-4, if neg { -(ret as i32) } else { ret as i32 });
+                // if neg { println!("\nstack: {:X?}", self.stack) }
+                println!("{:06X}: mmap(0x{_addr:X}, {length}, 0b{_prot:03b}, 0x{flags:X}, {_fd}) = {sign}0x{:X}", ctx.pc-4, if neg { -(ret as i32) } else { ret as i32 });
 
                 ctx.write_x(Register::A0, ret);
             },
