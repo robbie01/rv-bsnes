@@ -12,26 +12,7 @@ fn nte(rounding_mode: RoundingMode) -> anyhow::Result<()> {
 }
 
 impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
-    fn decode_block(&self, mut pc: u32) -> anyhow::Result<Vec<(u8, Instruction)>> {
-        let mut block = Vec::new();
-        loop {
-            let (instr, size) = if I::next_is_compressed(self.load_u8(pc)?) {
-                let raw = I::decode_compressed(self.load_u16(pc)?)?;
-                (raw, 2)
-            } else {
-                let raw = I::decode(self.load_u32(pc)?)?;
-                (raw, 4)
-            };
-            block.push((size, instr));
-            if matches!(instr, I::JumpAndLink(_) | I::JumpAndLinkRegister(_) | I::Branch(_)) {
-                break;
-            }
-            pc += u32::from(size);
-        }
-
-        Ok(block)
-    }
-
+    #[inline(always)]
     fn execute_one(&mut self, size: u8, instr: &I) -> anyhow::Result<()> {
         let pc = self.pc;
 
@@ -448,6 +429,27 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
         }
 
         res
+    }
+
+    #[inline(always)]
+    fn decode_block(&self, mut pc: u32) -> anyhow::Result<Vec<(u8, Instruction)>> {
+        let mut block = Vec::new();
+        loop {
+            let (instr, size) = if I::next_is_compressed(self.load_u8(pc)?) {
+                let raw = I::decode_compressed(self.load_u16(pc)?)?;
+                (raw, 2)
+            } else {
+                let raw = I::decode(self.load_u32(pc)?)?;
+                (raw, 4)
+            };
+            block.push((size, instr));
+            if matches!(instr, I::JumpAndLink(_) | I::JumpAndLinkRegister(_) | I::Branch(_)) {
+                break;
+            }
+            pc += u32::from(size);
+        }
+
+        Ok(block)
     }
 
     fn continue_execution(&mut self) -> anyhow::Result<()> {
