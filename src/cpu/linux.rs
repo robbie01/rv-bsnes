@@ -20,9 +20,11 @@ pub struct LinuxHypervisor<'data> {
     bss: u32,
     brk: u32,
     stack: Vec<u32>,
+    #[expect(unused)]
     breakpoint_reached: bool
 }
 
+#[expect(unused)]
 const ERROR_ROUTINES: [u32; 2] = [
     0x6001cc, // std::__throw_logic_error
     // 0x6cb75c, // __cxxabiv1::__cxa_allocate_exception
@@ -123,7 +125,7 @@ impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
     fn after_instr(&mut self, ctx: &mut super::Cpu, instr: &Instruction) -> anyhow::Result<()> {
         use crate::instr::{Instruction as I, *};
 
-        if false && self.breakpoint_reached {
+        if self.breakpoint_reached {
             match *instr {
                 I::Int(Int { dest, .. }) | I::IntImmediate(IntImmediate { dest, .. }) | I::LoadInt(LoadInt { dest, .. }) | I::U(U { dest, .. }) =>
                     println!(" x{} => {}", u8::from(dest), ctx.read_x(dest)),
