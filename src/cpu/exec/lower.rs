@@ -121,24 +121,153 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn int_immediate(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn int_immediate_shift_left(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
 
             use IntImmediateFunct::*;
-            use crate::instr::{ImmShift::*, Imm12::*};
+            use crate::instr::ImmShift::*;
 
             let src = cpu.read_x(src);
 
             let v = match funct {
                 ImmShift(ShiftLeft, n) => src.unbounded_shl(u8::from(n).into()),
+                _ => unsafe { std::hint::unreachable_unchecked() }
+            };
+
+            cpu.write_x(dest, v);
+            Ok(())
+        }
+
+        unsafe fn int_immediate_shift_right_logical(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+
+            use IntImmediateFunct::*;
+            use crate::instr::ImmShift::*;
+
+            let src = cpu.read_x(src);
+
+            let v = match funct {
                 ImmShift(ShiftRightLogical, n) => src.unbounded_shr(u8::from(n).into()),
+                _ => unsafe { std::hint::unreachable_unchecked() }
+            };
+
+            cpu.write_x(dest, v);
+            Ok(())
+        }
+
+        unsafe fn int_immediate_shift_right_arithmetic(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+
+            use IntImmediateFunct::*;
+            use crate::instr::ImmShift::*;
+
+            let src = cpu.read_x(src);
+
+            let v = match funct {
                 ImmShift(ShiftRightArithmetic, n) => (src as i32).unbounded_shr(u8::from(n).into()) as u32,
+                _ => unsafe { std::hint::unreachable_unchecked() }
+            };
+
+            cpu.write_x(dest, v);
+            Ok(())
+        }
+
+        unsafe fn int_immediate_add(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+
+            use IntImmediateFunct::*;
+            use crate::instr::Imm12::*;
+
+            let src = cpu.read_x(src);
+
+            let v = match funct {
                 Imm12(Add, n) => (src as i32).wrapping_add(n.into()) as u32,
+                _ => unsafe { std::hint::unreachable_unchecked() }
+            };
+
+            cpu.write_x(dest, v);
+            Ok(())
+        }
+
+        unsafe fn int_immediate_set_less_than(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+
+            use IntImmediateFunct::*;
+            use crate::instr::Imm12::*;
+
+            let src = cpu.read_x(src);
+
+            let v = match funct {
                 Imm12(SetLessThan, n) => ((src as i32) < i32::from(n)) as u32,
+                _ => unsafe { std::hint::unreachable_unchecked() }
+            };
+
+            cpu.write_x(dest, v);
+            Ok(())
+        }
+
+        unsafe fn int_immediate_set_less_than_unsigned(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+
+            use IntImmediateFunct::*;
+            use crate::instr::Imm12::*;
+
+            let src = cpu.read_x(src);
+
+            let v = match funct {
                 Imm12(SetLessThanUnsigned, n) => (src < (i32::from(n) as u32)) as u32,
+                _ => unsafe { std::hint::unreachable_unchecked() }
+            };
+
+            cpu.write_x(dest, v);
+            Ok(())
+        }
+
+        unsafe fn int_immediate_xor(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+
+            use IntImmediateFunct::*;
+            use crate::instr::Imm12::*;
+
+            let src = cpu.read_x(src);
+
+            let v = match funct {
                 Imm12(Xor, n) => src ^ (i32::from(n) as u32),
+                _ => unsafe { std::hint::unreachable_unchecked() }
+            };
+
+            cpu.write_x(dest, v);
+            Ok(())
+        }
+
+        unsafe fn int_immediate_or(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+
+            use IntImmediateFunct::*;
+            use crate::instr::Imm12::*;
+
+            let src = cpu.read_x(src);
+
+            let v = match funct {
                 Imm12(Or, n) => src | (i32::from(n) as u32),
-                Imm12(And, n) => src & (i32::from(n) as u32)
+                _ => unsafe { std::hint::unreachable_unchecked() }
+            };
+
+            cpu.write_x(dest, v);
+            Ok(())
+        }
+
+        unsafe fn int_immediate_and(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+
+            use IntImmediateFunct::*;
+            use crate::instr::Imm12::*;
+
+            let src = cpu.read_x(src);
+
+            let v = match funct {
+                Imm12(And, n) => src & (i32::from(n) as u32),
+                _ => unsafe { std::hint::unreachable_unchecked() }
             };
 
             cpu.write_x(dest, v);
@@ -457,7 +586,22 @@ impl Op {
             I::LoadFp(_) => load_fp,
             I::StoreFp(_) => store_fp,
             I::Int(_) => int,
-            I::IntImmediate(_) => int_immediate,
+            I::IntImmediate(IntImmediate { funct, .. }) => {
+                use crate::instr::IntImmediateFunct::*;
+                use crate::instr::{ImmShift::*, Imm12::*};
+
+                match funct {
+                    ImmShift(ShiftLeft, _) => int_immediate_shift_left,
+                    ImmShift(ShiftRightLogical, _) => int_immediate_shift_right_logical,
+                    ImmShift(ShiftRightArithmetic, _) => int_immediate_shift_right_arithmetic,
+                    Imm12(Add, _) => int_immediate_add,
+                    Imm12(SetLessThan, _) => int_immediate_set_less_than,
+                    Imm12(SetLessThanUnsigned, _) => int_immediate_set_less_than_unsigned,
+                    Imm12(Xor, _) => int_immediate_xor,
+                    Imm12(Or, _) => int_immediate_or,
+                    Imm12(And, _) => int_immediate_and
+                }
+            },
             I::U(_) => u,
             I::Fp(_) => fp,
             I::Fused(_) => fused,

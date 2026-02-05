@@ -13,6 +13,8 @@ use memory::Memory;
 const CANONICAL_NAN_F32: f32 = f32::from_bits(0x7fc00000);
 const CANONICAL_NAN_F64: f64 = f64::from_bits(0x7ff8000000000000);
 
+pub const OP_SIZE: usize = std::mem::size_of::<Op>();
+
 #[derive(Clone, Copy)]
 pub struct FRegister {
     value: f64
@@ -75,7 +77,7 @@ pub trait LoadableHypervisor<'data>: Hypervisor {
 #[derive(Clone, Debug)]
 pub struct Cpu {
     pc: u32,
-    pub x: [u32; 31],
+    pub x: [u32; 32],
     pub f: [FRegister; 32],
     pub memory: Memory,
 
@@ -86,7 +88,7 @@ impl Cpu {
     pub fn new() -> Self {
         let mut this = Self {
             pc: u32::MAX,
-            x: [0; 31],
+            x: [0; 32],
             f: [FRegister::write_f64(0.); 32],
             memory: Memory::new(0x10000000),
 
@@ -101,28 +103,24 @@ impl Cpu {
 
     #[inline(always)]
     pub fn read_x(&self, x: Register) -> u32 {
-        if x == Register::ZERO {
-            0
-        } else {
-            self.x[usize::from(x) - 1]
-        }
+        *unsafe { self.x.get_unchecked(usize::from(x)) }
     }
 
     #[inline(always)]
     pub fn write_x(&mut self, x: Register, v: u32) {
         if x != Register::ZERO {
-            self.x[usize::from(x) - 1] = v;
+            *unsafe { self.x.get_unchecked_mut(usize::from(x)) } = v;
         }
     }
 
     #[inline(always)]
     pub fn read_f(&mut self, f: Register) -> FRegister {
-        self.f[usize::from(f)]
+        *unsafe { self.f.get_unchecked(usize::from(f)) }
     }
 
     #[inline(always)]
     pub fn write_f(&mut self, f: Register, v: FRegister) {
-        self.f[usize::from(f)] = v;
+        *unsafe { self.f.get_unchecked_mut(usize::from(f)) } = v;
     }
 
     pub fn load<'data, H: LoadableHypervisor<'data>>(&mut self, h: &mut H, elf: &'data H::Object) -> anyhow::Result<()> {
