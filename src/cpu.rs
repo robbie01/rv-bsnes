@@ -2,7 +2,7 @@ mod exec;
 mod memory;
 pub mod linux;
 
-use std::fmt::Debug;
+use std::{collections::BTreeMap, fmt::Debug};
 
 use anyhow::{Context, ensure};
 
@@ -73,6 +73,7 @@ pub struct Cpu<H> {
     pub f: [FRegister; 32],
     pub memory: Memory,
 
+    block_cache: BTreeMap<u32, Vec<Instruction>>,
     hypervisor: Option<Box<H>>
 }
 
@@ -84,6 +85,7 @@ impl<H> Cpu<H> {
             f: [FRegister::write_f64(0.); 32],
             memory: Memory::new(0x10000000),
 
+            block_cache: BTreeMap::new(),
             hypervisor: Some(Box::new(hypervisor))
         };
 

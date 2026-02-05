@@ -4,10 +4,11 @@ use crate::instr::{Instruction as I, *};
 
 use super::*;
 
-fn nte(rounding_mode: RoundingMode) {
+fn nte(rounding_mode: RoundingMode) -> anyhow::Result<()> {
     if rounding_mode != RoundingMode::NearestTieToEven && rounding_mode != RoundingMode::Dynamic {
-        todo!("rounding modes other than NTE");
+        bail!("not yet implemented: rounding modes other than NTE");
     }
+    Ok(())
 }
 
 impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
@@ -159,12 +160,12 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
 
                 use FloatFunct::*;
                 let v = match funct {
-                    AddSingle => { nte(rounding_mode); FRegister::write_f32(v1.read_f32() + v2.read_f32()) },
-                    SubtractSingle => { nte(rounding_mode); FRegister::write_f32(v1.read_f32() - v2.read_f32()) },
-                    MultiplySingle => { nte(rounding_mode); FRegister::write_f32(v1.read_f32() * v2.read_f32()) },
-                    DivideSingle => { nte(rounding_mode); FRegister::write_f32(v1.read_f32() / v2.read_f32()) },
+                    AddSingle => { nte(rounding_mode)?; FRegister::write_f32(v1.read_f32() + v2.read_f32()) },
+                    SubtractSingle => { nte(rounding_mode)?; FRegister::write_f32(v1.read_f32() - v2.read_f32()) },
+                    MultiplySingle => { nte(rounding_mode)?; FRegister::write_f32(v1.read_f32() * v2.read_f32()) },
+                    DivideSingle => { nte(rounding_mode)?; FRegister::write_f32(v1.read_f32() / v2.read_f32()) },
                     SquareRootSingle => {
-                        nte(rounding_mode);
+                        nte(rounding_mode)?;
                         ensure!(src2 == Register::ZERO);
                         FRegister::write_f32(v1.read_f32().sqrt())
                     },
@@ -217,7 +218,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                         ensure!(src2 == Register::ZERO);
                         self.write_x(dest, match rounding_mode {
                             NearestTieToEven => v1.read_f32().to_bits(),
-                            Zero => todo!("classify"),
+                            Zero => bail!("not yet implemented: classify"),
                             _ => bail!("baDD")
                         });
                         return Ok(true)
@@ -243,7 +244,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
 
                     ConvertDoubleToSingle => {
                         ensure!(src2 == Register::RA);
-                        nte(rounding_mode);
+                        nte(rounding_mode)?;
                         FRegister::write_f32(v1.read_f64() as f32)
                     },
                     ConvertSingleToDouble => {
@@ -251,12 +252,12 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                         FRegister::write_f64(v1.read_f32() as f64)
                     },
 
-                    AddDouble => { nte(rounding_mode); FRegister::write_f64(v1.read_f64() + v2.read_f64()) },
-                    SubtractDouble => { nte(rounding_mode); FRegister::write_f64(v1.read_f64() - v2.read_f64()) },
-                    MultiplyDouble => { nte(rounding_mode); FRegister::write_f64(v1.read_f64() * v2.read_f64()) },
-                    DivideDouble => { nte(rounding_mode); FRegister::write_f64(v1.read_f64() / v2.read_f64()) },
+                    AddDouble => { nte(rounding_mode)?; FRegister::write_f64(v1.read_f64() + v2.read_f64()) },
+                    SubtractDouble => { nte(rounding_mode)?; FRegister::write_f64(v1.read_f64() - v2.read_f64()) },
+                    MultiplyDouble => { nte(rounding_mode)?; FRegister::write_f64(v1.read_f64() * v2.read_f64()) },
+                    DivideDouble => { nte(rounding_mode)?; FRegister::write_f64(v1.read_f64() / v2.read_f64()) },
                     SquareRootDouble => {
-                        nte(rounding_mode);
+                        nte(rounding_mode)?;
                         ensure!(src2 == Register::ZERO);
                         FRegister::write_f64(v1.read_f64().sqrt())
                     },
@@ -314,7 +315,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                         } as u32);
                         return Ok(true)
                     },
-                    ClassifyDouble => todo!("classify double"),
+                    ClassifyDouble => bail!("not yet implemented: classify double"),
                     ConvertFromWordDouble => FRegister::write_f64(match src2 {
                         Register::ZERO => self.read_x(src1) as i32 as f64,
                         Register::RA => self.read_x(src1) as f64,
@@ -329,7 +330,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                 use FloatWidth::*;
                 use FuseType::*;
 
-                nte(rounding_mode);
+                nte(rounding_mode)?;
 
                 let v1 = self.read_f(src1);
                 let v2 = self.read_f(src2);
@@ -383,7 +384,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                         self.write_x(dest, old);
                         Ok(true)
                     }
-                    _ => todo!("amo {funct:?}")
+                    _ => bail!("not yet implemented: amo {funct:?}")
                 }
             }
 
@@ -429,7 +430,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                 self.hypervisor = Some(h);
                 Ok(true)
             },
-            _ => todo!("{instr:?}")
+            _ => bail!("not yet implemented: {instr:?}")
         };
 
         if res.is_ok() {

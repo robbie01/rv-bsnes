@@ -100,7 +100,9 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
         if ERROR_ROUTINES.contains(&ctx.pc) {
             bail!("error routine reached\nstack: {:X?}", self.stack);
         }
-        
+        // if ctx.pc == 0x623f6a { // co_swap
+        //     println!("context switch!");
+        // }
         if self.breakpoint_reached {
             print!("\na0 = {:X}\nstack: {:X?}\n{:X}: {instr:?}", ctx.read_x(Register::A0), self.stack, ctx.pc);
         }

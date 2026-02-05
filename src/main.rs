@@ -1,3 +1,5 @@
+use std::{fs::File, io::{BufWriter, Write}};
+
 use anyhow::Context;
 use include_bytes_aligned::include_bytes_aligned;
 use object::{LittleEndian, Object, ObjectSymbol, read::elf::ElfFile32};
@@ -69,8 +71,43 @@ fn main() -> anyhow::Result<()> {
     cpu.write_x(Register::A0, pathinfo_addr);
     cpu.call_subroutine_by_name("jg_set_paths")?;
 
+    let inputstate = cpu.memory.kmalloc(16).context("couldn't alloc inputstate")?;
+    let buttons = cpu.memory.kmalloc(12).context("couldn't alloc buttons")?;
+    cpu.store_u32(inputstate+4, buttons)?;
+    eprintln!("calling jg_set_inputstate...");
+    cpu.write_x(Register::A0, inputstate);
+    cpu.write_x(Register::A1, 0);
+    cpu.call_subroutine_by_name("jg_set_inputstate")?;
+    cpu.write_x(Register::A0, inputstate);
+    cpu.write_x(Register::A1, 1);
+    cpu.call_subroutine_by_name("jg_set_inputstate")?;
+
+    let video_addr = cpu.memory.kmalloc(4 * 253440).context("couldn't alloc vid buf")?;
+    eprintln!("calling jg_get_videoinfo...");
+    cpu.call_subroutine_by_name("jg_get_videoinfo")?;
+    let vidinfo_addr = cpu.read_x(Register::A0);
+    cpu.store_u32(vidinfo_addr+40, video_addr)?;
+
+    eprintln!("calling jg_setup_video...");
+    cpu.call_subroutine_by_name("jg_setup_video")?;
+
     eprintln!("calling jg_game_load...");
     cpu.call_subroutine_by_name("jg_game_load")?;
+
+    for i in 0..300 {
+        eprintln!("calling jg_exec_frame ({i})...");
+        cpu.call_subroutine_by_name("jg_exec_frame")?;
+
+        if i > 80 {
+            let mut f = BufWriter::new(File::create(format!("frames/{i:03}.ppm"))?);
+            writeln!(f, "P6\n480 256\n255\n")?;
+            for i in 0..(480*256) {
+                let c = [cpu.load_u8(video_addr+4*i+2)?, cpu.load_u8(video_addr+4*i+1)?, cpu.load_u8(video_addr+4*i)?];
+                f.write_all(&c)?;
+            }
+            f.flush()?;
+        }
+    }
 
     Ok(())
 }
