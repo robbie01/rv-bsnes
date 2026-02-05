@@ -20,11 +20,9 @@ pub struct LinuxHypervisor<'data> {
     bss: u32,
     brk: u32,
     stack: Vec<u32>,
-    #[expect(unused)]
     breakpoint_reached: bool
 }
 
-#[expect(unused)]
 const ERROR_ROUTINES: [u32; 2] = [
     0x6001cc, // std::__throw_logic_error
     // 0x6cb75c, // __cxxabiv1::__cxa_allocate_exception

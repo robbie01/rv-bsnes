@@ -1,3 +1,6 @@
+#![feature(explicit_tail_calls)]
+#![expect(incomplete_features)]
+
 // use std::{fs::File, io::{BufWriter, Write}};
 
 use std::time::Instant;
@@ -6,15 +9,13 @@ use anyhow::Context;
 use include_bytes_aligned::include_bytes_aligned;
 use object::{LittleEndian, Object, ObjectSymbol, read::elf::ElfFile32};
 
-use crate::{cpu::{Cpu, OP_SIZE, linux::LinuxHypervisor}, instr::{InstructionUnion, Register}};
+use crate::{cpu::{Cpu, OP_SIZE, linux::LinuxHypervisor}, instr::Register};
 
 mod instr;
 mod cpu;
 mod fs;
 
 fn main() -> anyhow::Result<()> {
-    println!("{} {}", std::mem::size_of::<InstructionUnion>(), std::mem::align_of::<InstructionUnion>());
-
     let game = include_bytes!("../lttp.sfc");
 
     let program = ElfFile32::<LittleEndian>::parse(&include_bytes_aligned!(16, "../bsnes.elf")[..])?;
