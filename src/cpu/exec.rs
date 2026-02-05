@@ -11,14 +11,12 @@ fn nte(rounding_mode: RoundingMode) -> anyhow::Result<()> {
     Ok(())
 }
 
-impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
+impl Cpu {
     #[inline(always)]
-    fn execute_one(&mut self, size: u8, instr: &I) -> anyhow::Result<()> {
+    fn execute_one<'data>(&mut self, h: &mut impl Hypervisor<'data>, size: u8, instr: &I) -> anyhow::Result<()> {
         let pc = self.pc;
 
-        let mut h = self.hypervisor.take().unwrap();
         h.before_instr(self, instr)?;
-        self.hypervisor = Some(h);
         
         self.pc += u32::from(size);
 
@@ -408,31 +406,25 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
             },
             
             I::System(System::Ebreak) => {
-                let mut h = self.hypervisor.take().unwrap();
                 h.ebreak(self)?;
-                self.hypervisor = Some(h);
                 Ok(())
             },
             I::System(System::Ecall) => {
-                let mut h = self.hypervisor.take().unwrap();
                 h.ecall(self)?;
-                self.hypervisor = Some(h);
                 Ok(())
             },
             _ => bail!("not yet implemented: {instr:?}")
         };
 
         if res.is_ok() {
-            let mut h = self.hypervisor.take().unwrap();
             h.after_instr(self, instr)?;
-            self.hypervisor = Some(h);
         }
 
         res
     }
 
     #[inline(always)]
-    fn decode_block(&self, mut pc: u32) -> anyhow::Result<Vec<(u8, Instruction)>> {
+    fn decode_block(&self, mut pc: u32) -> anyhow::Result<Rc<[(u8, Instruction)]>> {
         let mut block = Vec::new();
         loop {
             let (instr, size) = if I::next_is_compressed(self.load_u8(pc)?) {
@@ -443,43 +435,48 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                 (raw, 4)
             };
             block.push((size, instr));
-            if matches!(instr, I::JumpAndLink(_) | I::JumpAndLinkRegister(_) | I::Branch(_)) {
-                break;
+            
+            match instr {
+                I::JumpAndLink(JumpAndLink { dest: _, offset }) => pc = pc.wrapping_add_signed(offset.into()),
+                I::JumpAndLinkRegister(_) | I::Branch(_) => break,
+                _ => pc += u32::from(size)
             }
-            pc += u32::from(size);
         }
 
-        Ok(block)
+        Ok(block.into())
     }
 
-    fn continue_execution(&mut self) -> anyhow::Result<()> {
+    fn continue_execution<'data>(&mut self, h: &mut impl Hypervisor<'data>) -> anyhow::Result<()> {
         if self.pc == 0 {
             bail!("tried to execute at address 0 (missing callback?)\nra = {:06X}", self.read_x(Register::RA));
         }
 
-        if !self.block_cache.contains_key(&self.pc) {
-            self.block_cache.insert(self.pc, Rc::new(self.decode_block(self.pc)?));
-        }
-        let block = self.block_cache.get(&self.pc).unwrap().clone();
+        let block = if let Some(block) = self.block_cache.get(&self.pc) {
+            block.clone()
+        } else {
+            let block = self.decode_block(self.pc)?;
+            self.block_cache.insert(self.pc, block.clone());
+            block
+        };
         
         for &(size, ref instr) in &block[..] {
-            self.execute_one(size, instr)?;
+            self.execute_one(h, size, instr)?;
         }
         Ok(())
     }
 
-    pub fn call_subroutine(&mut self, sub: u32) -> anyhow::Result<()> {
+    pub fn call_subroutine<'data>(&mut self, h: &mut impl Hypervisor<'data>, sub: u32) -> anyhow::Result<()> {
         ensure!(self.pc == u32::MAX);
         self.pc = sub;
         self.write_x(Register::RA, u32::MAX); // sentinel
         while self.pc != u32::MAX {
-            self.continue_execution()?;
+            self.continue_execution(h)?;
         }
         Ok(())
     }
 
-    pub fn call_subroutine_by_name(&mut self, sub: &str) -> anyhow::Result<()> {
-        let addr = self.hypervisor.as_ref().unwrap().symbol(sub)?;
-        self.call_subroutine(addr)
+    pub fn call_subroutine_by_name<'data>(&mut self, h: &mut impl Hypervisor<'data>, sub: &str) -> anyhow::Result<()> {
+        let addr = h.symbol(sub)?;
+        self.call_subroutine(h, addr)
     }
 }

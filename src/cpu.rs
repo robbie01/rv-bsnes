@@ -2,9 +2,10 @@ mod exec;
 mod memory;
 pub mod linux;
 
-use std::{collections::BTreeMap, fmt::Debug, rc::Rc};
+use std::{fmt::Debug, rc::Rc};
 
 use anyhow::{Context, ensure};
+use fnv::FnvHashMap;
 
 use crate::instr::{Instruction, Register};
 use memory::Memory;
@@ -56,37 +57,35 @@ impl Debug for FRegister {
 pub trait Hypervisor<'data>: Sized {
     type Object: 'data;
 
-    fn load<'this>(&'this mut self, ctx: &mut Cpu<Self>, obj: &'data Self::Object) -> anyhow::Result<()> where 'data: 'this;
-    fn before_instr(&mut self, ctx: &mut Cpu<Self>, instr: &Instruction) -> anyhow::Result<()>;
-    fn after_instr(&mut self, ctx: &mut Cpu<Self>, instr: &Instruction) -> anyhow::Result<()>;
+    fn load<'this>(&'this mut self, ctx: &mut Cpu, obj: &'data Self::Object) -> anyhow::Result<()> where 'data: 'this;
+    fn before_instr(&mut self, ctx: &mut Cpu, instr: &Instruction) -> anyhow::Result<()>;
+    fn after_instr(&mut self, ctx: &mut Cpu, instr: &Instruction) -> anyhow::Result<()>;
 
     fn symbol(&self, sym: &str) -> anyhow::Result<u32>;
 
-    fn ebreak(&mut self, ctx: &mut Cpu<Self>) -> anyhow::Result<()>;
-    fn ecall(&mut self, ctx: &mut Cpu<Self>) -> anyhow::Result<()>;
+    fn ebreak(&mut self, ctx: &mut Cpu) -> anyhow::Result<()>;
+    fn ecall(&mut self, ctx: &mut Cpu) -> anyhow::Result<()>;
 }
 
 #[derive(Clone, Debug)]
-pub struct Cpu<H> {
+pub struct Cpu {
     pc: u32,
     pub x: [u32; 31],
     pub f: [FRegister; 32],
     pub memory: Memory,
 
-    block_cache: BTreeMap<u32, Rc<Vec<(u8, Instruction)>>>,
-    hypervisor: Option<Box<H>>
+    pub block_cache: FnvHashMap<u32, Rc<[(u8, Instruction)]>>
 }
 
-impl<H> Cpu<H> {
-    pub fn new(hypervisor: H) -> Self {
+impl Cpu {
+    pub fn new() -> Self {
         let mut this = Self {
             pc: u32::MAX,
             x: [0; 31],
             f: [FRegister::write_f64(0.); 32],
             memory: Memory::new(0x10000000),
 
-            block_cache: BTreeMap::new(),
-            hypervisor: Some(Box::new(hypervisor))
+            block_cache: FnvHashMap::default()
         };
 
         // initialize stack pointer (todo make this better LoL)
@@ -121,16 +120,14 @@ impl<H> Cpu<H> {
         self.f[usize::from(f)] = v;
     }
 
-    pub fn load<'data>(&mut self, elf: &'data H::Object) -> anyhow::Result<()> where H: Hypervisor<'data> {
-        let mut h = self.hypervisor.take().unwrap();
+    pub fn load<'data, H: Hypervisor<'data>>(&mut self, h: &mut H, elf: &'data H::Object) -> anyhow::Result<()> where H: Hypervisor<'data> {
         h.load(self, elf)?;
-        self.hypervisor = Some(h);
         Ok(())
     }
 }
 
 // Load/store helpers
-impl<H> Cpu<H> {
+impl Cpu {
     #[inline(always)]
     pub fn load_u32(&self, addr: u32) -> anyhow::Result<u32> {
         Ok(u32::from_le_bytes(
