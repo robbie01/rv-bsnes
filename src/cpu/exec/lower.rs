@@ -2,7 +2,7 @@ use anyhow::{bail, ensure};
 
 use crate::{cpu::*, instr::{Instruction as I, *}};
 
-pub type OpFn = unsafe fn(&Op, &mut Cpu, &mut dyn Hypervisor) -> anyhow::Result<()>;
+pub type OpFn = unsafe fn(InstructionUnion, &mut Cpu, &mut dyn Hypervisor) -> anyhow::Result<()>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Op {
@@ -19,7 +19,7 @@ fn nte(rounding_mode: RoundingMode) -> anyhow::Result<()> {
 
 impl Op {
     pub fn new(instr: Instruction, size: u8) -> anyhow::Result<Self> {
-        unsafe fn load_int<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn load_int<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let LoadInt { dest, width, base, offset } = unsafe { instr.load_int };
 
@@ -38,7 +38,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn store_int<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn store_int<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let StoreInt { offset, width, base, src } = unsafe { instr.store_int };
 
@@ -55,7 +55,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn load_fp<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn load_fp<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let LoadFp { dest, width, base, offset } = unsafe { instr.load_fp };
 
@@ -71,7 +71,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn store_fp<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn store_fp<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let StoreFp { offset, width, base, src } = unsafe { instr.store_fp };
             
@@ -87,7 +87,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn int<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn int<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let Int { dest, funct, src1, src2 } = unsafe { instr.int };
 
@@ -125,7 +125,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn int_immediate_shift_left<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn int_immediate_shift_left<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
@@ -143,7 +143,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn int_immediate_shift_right_logical<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn int_immediate_shift_right_logical<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
@@ -161,7 +161,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn int_immediate_shift_right_arithmetic<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn int_immediate_shift_right_arithmetic<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
@@ -179,7 +179,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn int_immediate_add<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn int_immediate_add<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
@@ -197,7 +197,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn int_immediate_set_less_than<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn int_immediate_set_less_than<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
@@ -215,7 +215,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn int_immediate_set_less_than_unsigned<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn int_immediate_set_less_than_unsigned<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
@@ -233,7 +233,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn int_immediate_xor<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn int_immediate_xor<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
@@ -251,7 +251,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn int_immediate_or<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn int_immediate_or<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
@@ -269,7 +269,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn int_immediate_and<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn int_immediate_and<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
@@ -287,7 +287,7 @@ impl Op {
             Ok(())
         }
         
-        unsafe fn u<const SIZE: u32>(&Op { ref instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn u<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let U { type_, dest, imm } = unsafe { instr.u };
 
@@ -302,7 +302,7 @@ impl Op {
             Ok(())
         }
         
-        unsafe fn fp<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn fp<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let Fp { rounding_mode, funct, dest, src1, src2 } = unsafe { instr.fp };
 
@@ -480,7 +480,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn fused<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn fused<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let Fused { type_, width, rounding_mode, dest, src1, src2, src3 } = unsafe { instr.fused };
 
@@ -512,12 +512,12 @@ impl Op {
             Ok(())
         }
         
-        unsafe fn fence<const SIZE: u32>(_op: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn fence<const SIZE: u32>(_: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             Ok(())
         }
 
-        unsafe fn amo<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn amo<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let Amo { dest, src1, src2, release: _, acquire: _, funct } = unsafe { instr.amo };
 
@@ -550,7 +550,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn jump_and_link<const SIZE: u32>(&Op { ref instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn jump_and_link<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             let JumpAndLink { dest, offset } = unsafe { instr.jump_and_link };
             
             cpu.write_x(dest, cpu.pc+SIZE);
@@ -558,7 +558,7 @@ impl Op {
             Ok(())
         }
         
-        unsafe fn jump_and_link_register<const SIZE: u32>(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn jump_and_link_register<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             let JumpAndLinkRegister { dest, base, offset } = unsafe { instr.jump_and_link_register };
             
             let addr = cpu.read_x(base).wrapping_add_signed(offset.into());
@@ -567,7 +567,7 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn branch<const SIZE: u32>(&Op { ref instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn branch<const SIZE: u32>(instr: InstructionUnion, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             let Branch { offset, funct, src1, src2 } = unsafe { instr.branch };
 
             use BranchType::*;
@@ -590,150 +590,64 @@ impl Op {
             Ok(())
         }
 
-        unsafe fn ebreak<const SIZE: u32>(&Op { .. }: &Op, cpu: &mut Cpu, h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn ebreak<const SIZE: u32>(_: InstructionUnion, cpu: &mut Cpu, h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             h.ebreak(cpu)?;
             Ok(())
         }
 
-        unsafe fn ecall<const SIZE: u32>(&Op { .. }: &Op, cpu: &mut Cpu, h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe fn ecall<const SIZE: u32>(_: InstructionUnion, cpu: &mut Cpu, h: &mut dyn Hypervisor) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             h.ecall(cpu)?;
             Ok(())
         }
 
+        macro_rules! op_fn {
+            ($f:ident, $size:expr) => {
+                match $size {
+                    2 => $f::<2>,
+                    4 => $f::<4>,
+                    _ => unreachable!()
+                }
+            };
+        }
+
         let op_fn = match instr {
-            I::LoadInt(_) => match size {
-                2 => load_int::<2>,
-                4 => load_int::<4>,
-                _ => unreachable!()
-            }
-            I::StoreInt(_) => match size {
-                2 => store_int::<2>,
-                4 => store_int::<4>,
-                _ => unreachable!()
-            }
-            I::LoadFp(_) => match size {
-                2 => load_fp::<2>,
-                4 => load_fp::<4>,
-                _ => unreachable!()
-            }
-            I::StoreFp(_) => match size {
-                2 => store_fp::<2>,
-                4 => store_fp::<4>,
-                _ => unreachable!()
-            }
-            I::Int(_) => match size {
-                2 => int::<2>,
-                4 => int::<4>,
-                _ => unreachable!()
-            }
+            I::LoadInt(_) => op_fn!(load_int, size),
+            I::StoreInt(_) => op_fn!(store_int, size),
+            I::LoadFp(_) => op_fn!(load_fp, size),
+            I::StoreFp(_) => op_fn!(store_fp, size),
+            I::Int(_) => op_fn!(int, size),
             I::IntImmediate(IntImmediate { funct, .. }) => {
                 use crate::instr::IntImmediateFunct::*;
                 use crate::instr::{ImmShift::*, Imm12::*};
 
                 match funct {
-                    ImmShift(ShiftLeft, _) => match size {
-                        2 => int_immediate_shift_left::<2>,
-                        4 => int_immediate_shift_left::<4>,
-                        _ => unreachable!()
-                    }
-                    ImmShift(ShiftRightLogical, _) => match size {
-                        2 => int_immediate_shift_right_logical::<2>,
-                        4 => int_immediate_shift_right_logical::<4>,
-                        _ => unreachable!()
-                    }
-                    ImmShift(ShiftRightArithmetic, _) => match size {
-                        2 => int_immediate_shift_right_arithmetic::<2>,
-                        4 => int_immediate_shift_right_arithmetic::<4>,
-                        _ => unreachable!()
-                    }
-                    Imm12(Add, _) => match size {
-                        2 => int_immediate_add::<2>,
-                        4 => int_immediate_add::<4>,
-                        _ => unreachable!()
-                    }
-                    Imm12(SetLessThan, _) => match size {
-                        2 => int_immediate_set_less_than::<2>,
-                        4 => int_immediate_set_less_than::<4>,
-                        _ => unreachable!()
-                    }
-                    Imm12(SetLessThanUnsigned, _) => match size {
-                        2 => int_immediate_set_less_than_unsigned::<2>,
-                        4 => int_immediate_set_less_than_unsigned::<4>,
-                        _ => unreachable!()
-                    }
-                    Imm12(Xor, _) => match size {
-                        2 => int_immediate_xor::<2>,
-                        4 => int_immediate_xor::<4>,
-                        _ => unreachable!()
-                    }
-                    Imm12(Or, _) => match size {
-                        2 => int_immediate_or::<2>,
-                        4 => int_immediate_or::<4>,
-                        _ => unreachable!()
-                    }
-                    Imm12(And, _) => match size {
-                        2 => int_immediate_and::<2>,
-                        4 => int_immediate_and::<4>,
-                        _ => unreachable!()
-                    }
+                    ImmShift(ShiftLeft, _) => op_fn!(int_immediate_shift_left, size),
+                    ImmShift(ShiftRightLogical, _) => op_fn!(int_immediate_shift_right_logical, size),
+                    ImmShift(ShiftRightArithmetic, _) => op_fn!(int_immediate_shift_right_arithmetic, size),
+                    Imm12(Add, _) => op_fn!(int_immediate_add, size),
+                    Imm12(SetLessThan, _) => op_fn!(int_immediate_set_less_than, size),
+                    Imm12(SetLessThanUnsigned, _) => op_fn!(int_immediate_set_less_than_unsigned, size),
+                    Imm12(Xor, _) => op_fn!(int_immediate_xor, size),
+                    Imm12(Or, _) => op_fn!(int_immediate_or, size),
+                    Imm12(And, _) => op_fn!(int_immediate_and, size),
                 }
             },
-            I::U(_) => match size {
-                2 => u::<2>,
-                4 => u::<4>,
-                _ => unreachable!()
-            },
-            I::Fp(_) => match size {
-                2 => fp::<2>,
-                4 => fp::<4>,
-                _ => unreachable!()
-            }
-            I::Fused(_) => match size {
-                2 => fused::<2>,
-                4 => fused::<4>,
-                _ => unreachable!()
-            }
+            I::U(_) => op_fn!(u, size),
+            I::Fp(_) => op_fn!(fp, size),
+            I::Fused(_) => op_fn!(fused, size),
 
             // Fun fake atomics for a single-threaded core
-            I::Fence => match size {
-                2 => fence::<2>,
-                4 => fence::<4>,
-                _ => unreachable!()
-            }
-            I::Amo(_) => match size {
-                2 => amo::<2>,
-                4 => amo::<4>,
-                _ => unreachable!()
-            }
+            I::Fence => op_fn!(fence, size),
+            I::Amo(_) => op_fn!(amo, size),
 
-            I::JumpAndLink(_) => match size {
-                2 => jump_and_link::<2>,
-                4 => jump_and_link::<4>,
-                _ => unreachable!()
-            },
-            I::JumpAndLinkRegister(_) => match size {
-                2 => jump_and_link_register::<2>,
-                4 => jump_and_link_register::<4>,
-                _ => unreachable!()
-            }
-            I::Branch(_) => match size {
-                2 => branch::<2>,
-                4 => branch::<4>,
-                _ => unreachable!()
-            },
+            I::JumpAndLink(_) => op_fn!(jump_and_link, size),
+            I::JumpAndLinkRegister(_) => op_fn!(jump_and_link_register, size),
+            I::Branch(_) => op_fn!(branch, size),
             
-            I::System(System::Ebreak) => match size {
-                2 => ebreak::<2>,
-                4 => ebreak::<4>,
-                _ => unreachable!()
-            }
-            I::System(System::Ecall) => match size {
-                2 => ecall::<2>,
-                4 => ecall::<4>,
-                _ => unreachable!()
-            }
+            I::System(System::Ebreak) => op_fn!(ebreak, size),
+            I::System(System::Ecall) => op_fn!(ecall, size),
             _ => bail!("not yet implemented: {instr:?}")
         };
 
@@ -741,7 +655,7 @@ impl Op {
     }
 
     #[inline(always)]
-    pub fn execute(&self, cpu: &mut Cpu, h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-        unsafe { (self.op_fn)(self, cpu, h) }
+    pub fn execute(self, cpu: &mut Cpu, h: &mut dyn Hypervisor) -> anyhow::Result<()> {
+        unsafe { (self.op_fn)(self.instr, cpu, h) }
     }
 }

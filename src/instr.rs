@@ -238,7 +238,7 @@ pub union InstructionUnion {
     pub amo: Amo
 }
 
-const _: () = assert!(std::mem::size_of::<InstructionUnion>() <= std::mem::size_of::<usize>());
+const _: () = assert!(std::mem::size_of::<InstructionUnion>() <= 8);
 
 impl Instruction {
     pub fn next_is_compressed(next: u8) -> bool {

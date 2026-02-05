@@ -13,6 +13,8 @@ use memory::Memory;
 const CANONICAL_NAN_F32: f32 = f32::from_bits(0x7fc00000);
 const CANONICAL_NAN_F64: f64 = f64::from_bits(0x7ff8000000000000);
 
+const BOX_MASK: u64 = 0xffffffff00000000;
+
 pub const OP_SIZE: usize = std::mem::size_of::<Op>();
 
 #[derive(Clone, Copy)]
@@ -29,8 +31,7 @@ impl FRegister {
     #[inline(always)]
     pub const fn read_f32(self) -> f32 {
         let bits = self.value.to_bits();
-        let box_ = (bits >> 32) as u32;
-        if box_ == u32::MAX {
+        if bits & BOX_MASK == BOX_MASK {
             f32::from_bits(bits as u32)
         } else {
             CANONICAL_NAN_F32
@@ -45,7 +46,7 @@ impl FRegister {
     #[inline(always)]
     pub const fn write_f32(value: f32) -> Self {
         Self {
-            value: f64::from_bits((u64::MAX << 32) | (value.to_bits() as u64))
+            value: f64::from_bits(BOX_MASK | value.to_bits() as u64)
         }
     }
 }
