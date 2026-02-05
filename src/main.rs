@@ -125,7 +125,6 @@ fn main() -> anyhow::Result<()> {
     }
 
     println!("avg s per frame: {}", frametime / nframes as f64);
-    println!("n blocks: {}", cpu.hot_cache.iter().filter(|x| x.is_none()).count());
 
     Ok(())
 }

@@ -6,11 +6,12 @@ use crate::instr::{Instruction as I, *};
 
 use super::*;
 
-pub use lower::Op;
+use lower::Op;
+pub use lower::Block;
 
 impl Cpu {
     #[inline(always)]
-    fn decode_block(&self, mut pc: u32) -> anyhow::Result<Rc<[lower::Op]>> {
+    fn decode_block(&self, mut pc: u32) -> anyhow::Result<Rc<Block>> {
         let mut block = Vec::new();
         loop {
             let (instr, size) = if I::next_is_compressed(self.load_u8(pc)?) {
@@ -29,7 +30,7 @@ impl Cpu {
             }
         }
 
-        Ok(block.into())
+        Ok(Block::new(block))
     }
 
     fn continue_execution(&mut self, h: &mut impl Hypervisor) -> anyhow::Result<()> {
@@ -49,9 +50,7 @@ impl Cpu {
             block
         };
         
-        for op in &block[..] {
-            op.execute(self, h)?;
-        }
+        block.execute(self, h)?;
         Ok(())
     }
 

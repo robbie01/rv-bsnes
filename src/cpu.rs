@@ -7,7 +7,7 @@ use std::{fmt::Debug, rc::Rc};
 use anyhow::{Context, ensure};
 use fnv::FnvHashMap;
 
-use crate::{cpu::exec::Op, instr::{Instruction, Register}};
+use crate::instr::{Instruction, Register};
 use memory::Memory;
 
 const CANONICAL_NAN_F32: f32 = f32::from_bits(0x7fc00000);
@@ -82,8 +82,8 @@ pub struct Cpu {
     pub f: [FRegister; 32],
     pub memory: Memory,
 
-    pub hot_cache: [Option<(u32, Rc<[Op]>)>; HOT_SIZE],
-    pub block_cache: FnvHashMap<u32, Rc<[Op]>>
+    pub hot_cache: [Option<(u32, Rc<exec::Block>)>; HOT_SIZE],
+    pub block_cache: FnvHashMap<u32, Rc<exec::Block>>
 }
 
 impl Cpu {
