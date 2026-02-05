@@ -2,7 +2,7 @@ mod exec;
 mod memory;
 pub mod linux;
 
-use std::{collections::BTreeMap, fmt::Debug};
+use std::{collections::BTreeMap, fmt::Debug, rc::Rc};
 
 use anyhow::{Context, ensure};
 
@@ -57,8 +57,8 @@ pub trait Hypervisor<'data>: Sized {
     type Object: 'data;
 
     fn load<'this>(&'this mut self, ctx: &mut Cpu<Self>, obj: &'data Self::Object) -> anyhow::Result<()> where 'data: 'this;
-    fn before_instr(&mut self, ctx: &mut Cpu<Self>, instr: Instruction) -> anyhow::Result<()>;
-    fn after_instr(&mut self, ctx: &mut Cpu<Self>, instr: Instruction) -> anyhow::Result<()>;
+    fn before_instr(&mut self, ctx: &mut Cpu<Self>, instr: &Instruction) -> anyhow::Result<()>;
+    fn after_instr(&mut self, ctx: &mut Cpu<Self>, instr: &Instruction) -> anyhow::Result<()>;
 
     fn symbol(&self, sym: &str) -> anyhow::Result<u32>;
 
@@ -73,7 +73,7 @@ pub struct Cpu<H> {
     pub f: [FRegister; 32],
     pub memory: Memory,
 
-    block_cache: BTreeMap<u32, Vec<Instruction>>,
+    block_cache: BTreeMap<u32, Rc<Vec<(u8, Instruction)>>>,
     hypervisor: Option<Box<H>>
 }
 

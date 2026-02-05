@@ -12,28 +12,36 @@ fn nte(rounding_mode: RoundingMode) -> anyhow::Result<()> {
 }
 
 impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
-    fn execute_one(&mut self) -> anyhow::Result<bool> {
-        let pc = self.pc;
-
-        if pc == 0 {
-            bail!("tried to execute at address 0 (missing callback?)\nra = {:06X}", self.read_x(Register::RA));
+    fn decode_block(&self, mut pc: u32) -> anyhow::Result<Vec<(u8, Instruction)>> {
+        let mut block = Vec::new();
+        loop {
+            let (instr, size) = if I::next_is_compressed(self.load_u8(pc)?) {
+                let raw = I::decode_compressed(self.load_u16(pc)?)?;
+                (raw, 2)
+            } else {
+                let raw = I::decode(self.load_u32(pc)?)?;
+                (raw, 4)
+            };
+            block.push((size, instr));
+            if matches!(instr, I::JumpAndLink(_) | I::JumpAndLinkRegister(_) | I::Branch(_)) {
+                break;
+            }
+            pc += u32::from(size);
         }
 
-        let (instr, size) = if I::next_is_compressed(self.load_u8(pc)?) {
-            let raw = I::decode_compressed(self.load_u16(pc)?)?;
-            (raw, 2)
-        } else {
-            let raw = I::decode(self.load_u32(pc)?)?;
-            (raw, 4)
-        };
+        Ok(block)
+    }
+
+    fn execute_one(&mut self, size: u8, instr: &I) -> anyhow::Result<()> {
+        let pc = self.pc;
 
         let mut h = self.hypervisor.take().unwrap();
         h.before_instr(self, instr)?;
         self.hypervisor = Some(h);
         
-        self.pc += size;
+        self.pc += u32::from(size);
 
-        let res = match instr {
+        let res = match *instr {
             I::LoadInt(LoadInt { dest, width, base, offset }) => {
                 use LoadWidth::*;
                 let addr = self.read_x(base).wrapping_add_signed(offset.into());
@@ -47,7 +55,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                 };
 
                 self.write_x(dest, v);
-                Ok(true)
+                Ok(())
             },
             I::StoreInt(StoreInt { offset, width, base, src }) => {
                 use StoreWidth::*;
@@ -60,7 +68,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                     Half => self.store_u16(addr, v as u16)?,
                     Word => self.store_u32(addr, v)?
                 }
-                Ok(true)
+                Ok(())
             },
             I::LoadFp(LoadFp { dest, width, base, offset }) => {
                 use FpWidth::*;
@@ -72,7 +80,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                 };
 
                 self.write_f(dest, v);
-                Ok(true)
+                Ok(())
             },
             I::StoreFp(StoreFp { offset, width, base, src }) => {
                 use FpWidth::*;
@@ -84,7 +92,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                     Word => self.store_f32(addr, v.read_f32())?,
                     Double => self.store_f64(addr, v.read_f64())?
                 }
-                Ok(true)
+                Ok(())
             },
             I::Int(Int { dest, funct, src1, src2 }) => {
                 use IntegerFunct::*;
@@ -118,7 +126,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                 };
 
                 self.write_x(dest, v);
-                Ok(true)
+                Ok(())
             },
             I::IntImmediate(IntImmediate { dest, funct, src }) => {
                 use IntImmediateFunct::*;
@@ -139,7 +147,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                 };
 
                 self.write_x(dest, v);
-                Ok(true)
+                Ok(())
             },
             I::U(U { type_, dest, imm }) => {
                 use UType::*;
@@ -150,7 +158,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                 };
 
                 self.write_x(dest, v);
-                Ok(true)
+                Ok(())
             },
             I::Fp(Fp { rounding_mode, funct, dest, src1, src2 }) => {
                 use RoundingMode::*;
@@ -212,7 +220,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                             },
                             _ => bail!("BADddd")
                         });
-                        return Ok(true)
+                        return Ok(())
                     },
                     MoveToXSingle => {
                         ensure!(src2 == Register::ZERO);
@@ -221,7 +229,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                             Zero => bail!("not yet implemented: classify"),
                             _ => bail!("baDD")
                         });
-                        return Ok(true)
+                        return Ok(())
                     },
                     CompareSingle => {
                         self.write_x(dest, match rounding_mode {
@@ -230,7 +238,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                             Down => v1.read_f32() == v2.read_f32(),
                             _ => bail!("bAddd")
                         } as u32);
-                        return Ok(true)
+                        return Ok(())
                     },
                     ConvertFromWordSingle => FRegister::write_f32(match src2 {
                         Register::ZERO => self.read_x(src1) as i32 as f32,
@@ -304,7 +312,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                             },
                             _ => bail!("BADddd")
                         });
-                        return Ok(true)
+                        return Ok(())
                     },
                     CompareDouble => {
                         self.write_x(dest, match rounding_mode {
@@ -313,7 +321,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                             Down => v1.read_f64() == v2.read_f64(),
                             _ => bail!("bAddd")
                         } as u32);
-                        return Ok(true)
+                        return Ok(())
                     },
                     ClassifyDouble => bail!("not yet implemented: classify double"),
                     ConvertFromWordDouble => FRegister::write_f64(match src2 {
@@ -324,7 +332,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                 };
 
                 self.write_f(dest, v);
-                Ok(true)
+                Ok(())
             },
             I::Fused(Fused { type_, width, rounding_mode, dest, src1, src2, src3 }) => {
                 use FloatWidth::*;
@@ -352,11 +360,11 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                 };
 
                 self.write_f(dest, v);
-                Ok(true)
+                Ok(())
             },
 
             // Fun fake atomics for a single-threaded core
-            I::Fence => Ok(true),
+            I::Fence => Ok(()),
             I::Amo(Amo { dest, src1, src2, release: _, acquire: _, funct }) => {
                 use AmoFunct::*;
 
@@ -367,7 +375,7 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                         let v = self.load_u32(addr)?;
 
                         self.write_x(dest, v);
-                        Ok(true)
+                        Ok(())
                     },
                     StoreConditional => {
                         let addr = self.read_x(src1);
@@ -375,14 +383,14 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
 
                         self.store_u32(addr, v)?;
                         self.write_x(dest, 0);
-                        Ok(true)
+                        Ok(())
                     },
                     Swap => {
                         let addr = self.read_x(src1);
                         let old = self.load_u32(addr)?;
                         self.store_u32(addr, self.read_x(src2))?;
                         self.write_x(dest, old);
-                        Ok(true)
+                        Ok(())
                     }
                     _ => bail!("not yet implemented: amo {funct:?}")
                 }
@@ -391,13 +399,13 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
             I::JumpAndLink(JumpAndLink { dest, offset }) => {
                 self.write_x(dest, self.pc);
                 self.pc = pc.wrapping_add_signed(offset.into());
-                Ok(false)
+                Ok(())
             },
             I::JumpAndLinkRegister(JumpAndLinkRegister { dest, base, offset }) => {
                 let addr = self.read_x(base).wrapping_add_signed(offset.into());
                 self.write_x(dest, self.pc);
                 self.pc = addr;
-                Ok(false)
+                Ok(())
             },
             I::Branch(Branch { offset, funct, src1, src2 }) => {
                 use BranchType::*;
@@ -415,20 +423,20 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
                 } {
                     self.pc = pc.wrapping_add_signed(offset.into());
                 }
-                Ok(false)
+                Ok(())
             },
             
             I::System(System::Ebreak) => {
                 let mut h = self.hypervisor.take().unwrap();
                 h.ebreak(self)?;
                 self.hypervisor = Some(h);
-                Ok(true)
+                Ok(())
             },
             I::System(System::Ecall) => {
                 let mut h = self.hypervisor.take().unwrap();
                 h.ecall(self)?;
                 self.hypervisor = Some(h);
-                Ok(true)
+                Ok(())
             },
             _ => bail!("not yet implemented: {instr:?}")
         };
@@ -443,7 +451,18 @@ impl<'data, H: Hypervisor<'data> + Debug> Cpu<H> {
     }
 
     fn continue_execution(&mut self) -> anyhow::Result<()> {
-        while self.execute_one()? {}
+        if self.pc == 0 {
+            bail!("tried to execute at address 0 (missing callback?)\nra = {:06X}", self.read_x(Register::RA));
+        }
+
+        if !self.block_cache.contains_key(&self.pc) {
+            self.block_cache.insert(self.pc, Rc::new(self.decode_block(self.pc)?));
+        }
+        let block = self.block_cache.get(&self.pc).unwrap().clone();
+        
+        for &(size, ref instr) in &block[..] {
+            self.execute_one(size, instr)?;
+        }
         Ok(())
     }
 

@@ -94,20 +94,20 @@ fn main() -> anyhow::Result<()> {
     eprintln!("calling jg_game_load...");
     cpu.call_subroutine_by_name("jg_game_load")?;
 
-    for i in 0..300 {
-        eprintln!("calling jg_exec_frame ({i})...");
-        cpu.call_subroutine_by_name("jg_exec_frame")?;
+    // for i in 0..300 {
+    //     eprintln!("calling jg_exec_frame ({i})...");
+    //     cpu.call_subroutine_by_name("jg_exec_frame")?;
 
-        if i > 80 {
-            let mut f = BufWriter::new(File::create(format!("frames/{i:03}.ppm"))?);
-            writeln!(f, "P6\n480 256\n255\n")?;
-            for i in 0..(480*256) {
-                let c = [cpu.load_u8(video_addr+4*i+2)?, cpu.load_u8(video_addr+4*i+1)?, cpu.load_u8(video_addr+4*i)?];
-                f.write_all(&c)?;
-            }
-            f.flush()?;
-        }
-    }
+    //     if i > 80 {
+    //         let mut f = BufWriter::new(File::create(format!("frames/{i:03}.ppm"))?);
+    //         writeln!(f, "P6\n480 256\n255\n")?;
+    //         for i in 0..(480*256) {
+    //             let c = [cpu.load_u8(video_addr+4*i+2)?, cpu.load_u8(video_addr+4*i+1)?, cpu.load_u8(video_addr+4*i)?];
+    //             f.write_all(&c)?;
+    //         }
+    //         f.flush()?;
+    //     }
+    // }
 
     Ok(())
 }

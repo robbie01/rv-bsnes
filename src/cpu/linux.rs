@@ -96,7 +96,7 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
     }
 
     #[inline(always)]
-    fn before_instr(&mut self, ctx: &mut super::Cpu<Self>, instr: Instruction) -> anyhow::Result<()> {
+    fn before_instr(&mut self, ctx: &mut super::Cpu<Self>, instr: &Instruction) -> anyhow::Result<()> {
         if ERROR_ROUTINES.contains(&ctx.pc) {
             bail!("error routine reached\nstack: {:X?}", self.stack);
         }
@@ -118,11 +118,11 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
     }
 
     #[inline(always)]
-    fn after_instr(&mut self, ctx: &mut super::Cpu<Self>, instr: Instruction) -> anyhow::Result<()> {
+    fn after_instr(&mut self, ctx: &mut super::Cpu<Self>, instr: &Instruction) -> anyhow::Result<()> {
         use crate::instr::{Instruction as I, *};
 
         if self.breakpoint_reached {
-            match instr {
+            match *instr {
                 I::Int(Int { dest, .. }) | I::IntImmediate(IntImmediate { dest, .. }) | I::LoadInt(LoadInt { dest, .. }) | I::U(U { dest, .. }) =>
                     println!(" x{} => {}", u8::from(dest), ctx.read_x(dest)),
                 _ => println!()
