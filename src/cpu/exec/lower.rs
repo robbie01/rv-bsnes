@@ -7,8 +7,8 @@ pub type OpFn = unsafe fn(&Op, &mut Cpu, &mut dyn Hypervisor) -> anyhow::Result<
 #[derive(Debug, Clone, Copy)]
 pub struct Op {
     op_fn: OpFn,
-    size: u8,
-    instr: Instruction
+    instr: InstructionUnion,
+    size: u8
 }
 
 fn nte(rounding_mode: RoundingMode) -> anyhow::Result<()> {
@@ -21,7 +21,7 @@ fn nte(rounding_mode: RoundingMode) -> anyhow::Result<()> {
 impl Op {
     pub fn new(instr: Instruction, size: u8) -> anyhow::Result<Self> {
         unsafe fn load_int(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::LoadInt(LoadInt { dest, width, base, offset }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let LoadInt { dest, width, base, offset } = unsafe { instr.load_int };
 
             use LoadWidth::*;
             let addr = cpu.read_x(base).wrapping_add_signed(offset.into());
@@ -39,7 +39,7 @@ impl Op {
         }
 
         unsafe fn store_int(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::StoreInt(StoreInt { offset, width, base, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let StoreInt { offset, width, base, src } = unsafe { instr.store_int };
 
             use StoreWidth::*;
             let addr = cpu.read_x(base).wrapping_add_signed(offset.into());
@@ -55,7 +55,7 @@ impl Op {
         }
 
         unsafe fn load_fp(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::LoadFp(LoadFp { dest, width, base, offset }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let LoadFp { dest, width, base, offset } = unsafe { instr.load_fp };
 
             use FpWidth::*;
             let addr = cpu.read_x(base).wrapping_add_signed(offset.into());
@@ -70,7 +70,7 @@ impl Op {
         }
 
         unsafe fn store_fp(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::StoreFp(StoreFp { offset, width, base, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let StoreFp { offset, width, base, src } = unsafe { instr.store_fp };
             
             use FpWidth::*;
             let addr = cpu.read_x(base).wrapping_add_signed(offset.into());
@@ -85,7 +85,7 @@ impl Op {
         }
 
         unsafe fn int(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::Int(Int { dest, funct, src1, src2 }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let Int { dest, funct, src1, src2 } = unsafe { instr.int };
 
             use IntegerFunct::*;
 
@@ -122,7 +122,7 @@ impl Op {
         }
 
         unsafe fn int_immediate_shift_left(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::ImmShift::*;
@@ -139,7 +139,7 @@ impl Op {
         }
 
         unsafe fn int_immediate_shift_right_logical(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::ImmShift::*;
@@ -156,7 +156,7 @@ impl Op {
         }
 
         unsafe fn int_immediate_shift_right_arithmetic(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::ImmShift::*;
@@ -173,7 +173,7 @@ impl Op {
         }
 
         unsafe fn int_immediate_add(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::Imm12::*;
@@ -190,7 +190,7 @@ impl Op {
         }
 
         unsafe fn int_immediate_set_less_than(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::Imm12::*;
@@ -207,7 +207,7 @@ impl Op {
         }
 
         unsafe fn int_immediate_set_less_than_unsigned(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::Imm12::*;
@@ -224,7 +224,7 @@ impl Op {
         }
 
         unsafe fn int_immediate_xor(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::Imm12::*;
@@ -241,7 +241,7 @@ impl Op {
         }
 
         unsafe fn int_immediate_or(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::Imm12::*;
@@ -258,7 +258,7 @@ impl Op {
         }
 
         unsafe fn int_immediate_and(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::IntImmediate(IntImmediate { dest, funct, src }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let IntImmediate { dest, funct, src } = unsafe { instr.int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::Imm12::*;
@@ -275,7 +275,7 @@ impl Op {
         }
         
         unsafe fn u(&Op { size, ref instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::U(U { type_, dest, imm }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let U { type_, dest, imm } = unsafe { instr.u };
 
             use UType::*;
 
@@ -289,7 +289,7 @@ impl Op {
         }
         
         unsafe fn fp(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::Fp(Fp { rounding_mode, funct, dest, src1, src2 }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let Fp { rounding_mode, funct, dest, src1, src2 } = unsafe { instr.fp };
 
             use RoundingMode::*;
 
@@ -466,7 +466,7 @@ impl Op {
         }
 
         unsafe fn fused(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::Fused(Fused { type_, width, rounding_mode, dest, src1, src2, src3 }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let Fused { type_, width, rounding_mode, dest, src1, src2, src3 } = unsafe { instr.fused };
 
             use FloatWidth::*;
             use FuseType::*;
@@ -501,7 +501,7 @@ impl Op {
         }
 
         unsafe fn amo(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::Amo(Amo { dest, src1, src2, release: _, acquire: _, funct }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let Amo { dest, src1, src2, release: _, acquire: _, funct } = unsafe { instr.amo };
 
             use AmoFunct::*;
 
@@ -533,7 +533,7 @@ impl Op {
         }
 
         unsafe fn jump_and_link(&Op { size, ref instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::JumpAndLink(JumpAndLink { dest, offset }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let JumpAndLink { dest, offset } = unsafe { instr.jump_and_link };
             
             cpu.write_x(dest, cpu.pc);
             cpu.pc = cpu.pc.wrapping_sub(u32::from(size)).wrapping_add_signed(offset.into());
@@ -541,7 +541,7 @@ impl Op {
         }
         
         unsafe fn jump_and_link_register(Op { instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::JumpAndLinkRegister(JumpAndLinkRegister { dest, base, offset }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let JumpAndLinkRegister { dest, base, offset } = unsafe { instr.jump_and_link_register };
             
             let addr = cpu.read_x(base).wrapping_add_signed(offset.into());
             cpu.write_x(dest, cpu.pc);
@@ -550,7 +550,7 @@ impl Op {
         }
 
         unsafe fn branch(&Op { size, ref instr, .. }: &Op, cpu: &mut Cpu, _h: &mut dyn Hypervisor) -> anyhow::Result<()> {
-            let I::Branch(Branch { offset, funct, src1, src2 }) = *instr else { unsafe { std::hint::unreachable_unchecked() } };
+            let Branch { offset, funct, src1, src2 } = unsafe { instr.branch };
 
             use BranchType::*;
             
@@ -619,7 +619,7 @@ impl Op {
             _ => bail!("not yet implemented: {instr:?}")
         };
 
-        Ok(Op { op_fn, size, instr })
+        Ok(Op { op_fn, size, instr: instr.into() })
     }
 
     #[inline(always)]

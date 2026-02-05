@@ -1,5 +1,7 @@
 mod data;
 
+use std::fmt::Debug;
+
 use anyhow::bail;
 pub use data::*;
 
@@ -216,6 +218,27 @@ pub enum Instruction {
     Fused(Fused),
     Amo(Amo)
 }
+
+#[derive(Clone, Copy)]
+pub union InstructionUnion {
+    pub load_int: LoadInt,
+    pub fence: (),
+    pub int_immediate: IntImmediate,
+    pub u: U,
+    pub store_int: StoreInt,
+    pub int: Int,
+    pub branch: Branch,
+    pub jump_and_link: JumpAndLink,
+    pub jump_and_link_register: JumpAndLinkRegister,
+    pub system: System,
+    pub load_fp: LoadFp,
+    pub store_fp: StoreFp,
+    pub fp: Fp,
+    pub fused: Fused,
+    pub amo: Amo
+}
+
+const _: () = assert!(std::mem::size_of::<InstructionUnion>() <= std::mem::size_of::<usize>());
 
 impl Instruction {
     pub fn next_is_compressed(next: u8) -> bool {
@@ -602,5 +625,33 @@ impl Instruction {
             i if i > OPCODE_MASK => unreachable!(),
             _ => bail!("unknown opcode")
         })
+    }
+}
+
+impl From<Instruction> for InstructionUnion {
+    fn from(value: Instruction) -> Self {
+        match value {
+            Instruction::LoadInt(load_int) => Self { load_int },
+            Instruction::Fence => Self { fence: () },
+            Instruction::IntImmediate(int_immediate) => Self { int_immediate },
+            Instruction::U(u) => Self { u },
+            Instruction::StoreInt(store_int) => Self { store_int },
+            Instruction::Int(int) => Self { int },
+            Instruction::Branch(branch) => Self { branch },
+            Instruction::JumpAndLink(jump_and_link) => Self { jump_and_link },
+            Instruction::JumpAndLinkRegister(jump_and_link_register) => Self { jump_and_link_register },
+            Instruction::System(system) => Self { system },
+            Instruction::LoadFp(load_fp) => Self { load_fp },
+            Instruction::StoreFp(store_fp) => Self { store_fp },
+            Instruction::Fp(fp) => Self { fp },
+            Instruction::Fused(fused) => Self { fused },
+            Instruction::Amo(amo) => Self { amo }
+        }
+    }
+}
+
+impl Debug for InstructionUnion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("<instr>")
     }
 }
