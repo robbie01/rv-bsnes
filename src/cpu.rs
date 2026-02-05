@@ -7,7 +7,7 @@ use std::{fmt::Debug, rc::Rc};
 use anyhow::{Context, ensure};
 use fnv::FnvHashMap;
 
-use crate::instr::{Instruction, Register};
+use crate::{cpu::exec::Op, instr::{Instruction, Register}};
 use memory::Memory;
 
 const CANONICAL_NAN_F32: f32 = f32::from_bits(0x7fc00000);
@@ -54,17 +54,22 @@ impl Debug for FRegister {
     }
 }
 
-pub trait Hypervisor<'data>: Sized {
-    type Object: 'data;
-
-    fn load<'this>(&'this mut self, ctx: &mut Cpu, obj: &'data Self::Object) -> anyhow::Result<()> where 'data: 'this;
+pub trait Hypervisor {
+    #[expect(unused)]
     fn before_instr(&mut self, ctx: &mut Cpu, instr: &Instruction) -> anyhow::Result<()>;
+    #[expect(unused)]
     fn after_instr(&mut self, ctx: &mut Cpu, instr: &Instruction) -> anyhow::Result<()>;
 
     fn symbol(&self, sym: &str) -> anyhow::Result<u32>;
 
     fn ebreak(&mut self, ctx: &mut Cpu) -> anyhow::Result<()>;
     fn ecall(&mut self, ctx: &mut Cpu) -> anyhow::Result<()>;
+}
+
+pub trait LoadableHypervisor<'data>: Hypervisor {
+    type Object: 'data;
+
+    fn load<'this>(&'this mut self, ctx: &mut Cpu, obj: &'data Self::Object) -> anyhow::Result<()> where 'data: 'this;
 }
 
 #[derive(Clone, Debug)]
@@ -74,7 +79,7 @@ pub struct Cpu {
     pub f: [FRegister; 32],
     pub memory: Memory,
 
-    pub block_cache: FnvHashMap<u32, Rc<[(u8, Instruction)]>>
+    pub block_cache: FnvHashMap<u32, Rc<[Op]>>
 }
 
 impl Cpu {
@@ -120,7 +125,7 @@ impl Cpu {
         self.f[usize::from(f)] = v;
     }
 
-    pub fn load<'data, H: Hypervisor<'data>>(&mut self, h: &mut H, elf: &'data H::Object) -> anyhow::Result<()> where H: Hypervisor<'data> {
+    pub fn load<'data, H: LoadableHypervisor<'data>>(&mut self, h: &mut H, elf: &'data H::Object) -> anyhow::Result<()> {
         h.load(self, elf)?;
         Ok(())
     }

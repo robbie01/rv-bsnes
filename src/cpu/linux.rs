@@ -23,9 +23,6 @@ pub struct LinuxHypervisor<'data> {
     breakpoint_reached: bool
 }
 
-// TODO: synthesize __init_libc (https://github.com/kraj/musl/blob/kraj/master/src/env/__libc_start_main.c)
-// (this initializes auxv)
-
 const ERROR_ROUTINES: [u32; 2] = [
     0x6001cc, // std::__throw_logic_error
     // 0x6cb75c, // __cxxabiv1::__cxa_allocate_exception
@@ -56,7 +53,7 @@ impl<'data> LinuxHypervisor<'data> {
     }
 }
 
-impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
+impl<'data> super::LoadableHypervisor<'data> for LinuxHypervisor<'data> {
     type Object = ElfFile32<'data, LittleEndian>;
 
     fn load<'this>(&'this mut self, ctx: &mut super::Cpu, obj: &'data ElfFile32<'data, LittleEndian>) -> anyhow::Result<()> where 'data: 'this {
@@ -88,7 +85,9 @@ impl<'data> super::Hypervisor<'data> for LinuxHypervisor<'data> {
 
         Ok(())
     }
+}
 
+impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
     fn symbol(&self, sym: &str) -> anyhow::Result<u32> {
         Ok(self.image.as_ref().context("no image")?
             .symbol_by_name(sym).context("sym not found")?

@@ -97,14 +97,15 @@ fn main() -> anyhow::Result<()> {
     eprintln!("calling jg_game_load...");
     cpu.call_subroutine_by_name(&mut h, "jg_game_load")?;
 
-    let mut frametimes = Vec::new();
+    let nframes = 30;
+    let mut frametime = 0.;
 
-    for i in 0..300 {
+    for i in 0..nframes {
         eprintln!("calling jg_exec_frame ({i})...");
         let t1 = Instant::now();
         cpu.call_subroutine_by_name(&mut h, "jg_exec_frame")?;
         let t = Instant::now() - t1;
-        frametimes.push(t.as_secs_f64());
+        frametime += t.as_secs_f64();
 
         // if i >= 300 {
         //     let _w = cpu.load_u32(vidinfo_addr+0xc)?;
@@ -120,7 +121,8 @@ fn main() -> anyhow::Result<()> {
         // }
     }
 
-    println!("avg s per frame: {}", frametimes.iter().copied().sum::<f64>() / frametimes.len() as f64);
+    println!("avg s per frame: {}", frametime / nframes as f64);
+    println!("bytes used (conservative): {}", cpu.block_cache.values().map(|v| v.len()*std::mem::size_of::<(u8, instr::Instruction)>() + 4).sum::<usize>());
 
     Ok(())
 }
