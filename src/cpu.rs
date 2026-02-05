@@ -15,8 +15,6 @@ const CANONICAL_NAN_F64: f64 = f64::from_bits(0x7ff8000000000000);
 
 const BOX_MASK: u64 = 0xffffffff00000000;
 
-pub const OP_SIZE: usize = std::mem::size_of::<Op>();
-
 #[derive(Clone, Copy)]
 pub struct FRegister {
     value: f64
@@ -75,6 +73,8 @@ pub trait LoadableHypervisor<'data>: Hypervisor {
     fn load<'this>(&'this mut self, ctx: &mut Cpu, obj: &'data Self::Object) -> anyhow::Result<()> where 'data: 'this;
 }
 
+const HOT_SIZE: usize = 1 << 14;
+
 #[derive(Clone, Debug)]
 pub struct Cpu {
     pc: u32,
@@ -82,6 +82,7 @@ pub struct Cpu {
     pub f: [FRegister; 32],
     pub memory: Memory,
 
+    pub hot_cache: [Option<(u32, Rc<[Op]>)>; HOT_SIZE],
     pub block_cache: FnvHashMap<u32, Rc<[Op]>>
 }
 
@@ -93,6 +94,7 @@ impl Cpu {
             f: [FRegister::write_f64(0.); 32],
             memory: Memory::new(0x10000000),
 
+            hot_cache: [const { None }; _],
             block_cache: FnvHashMap::default()
         };
 

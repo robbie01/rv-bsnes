@@ -9,7 +9,7 @@ use anyhow::Context;
 use include_bytes_aligned::include_bytes_aligned;
 use object::{LittleEndian, Object, ObjectSymbol, read::elf::ElfFile32};
 
-use crate::{cpu::{Cpu, OP_SIZE, linux::LinuxHypervisor}, instr::Register};
+use crate::{cpu::{Cpu, linux::LinuxHypervisor}, instr::Register};
 
 mod instr;
 mod cpu;
@@ -100,7 +100,7 @@ fn main() -> anyhow::Result<()> {
     eprintln!("calling jg_game_load...");
     cpu.call_subroutine_by_name(&mut h, "jg_game_load")?;
 
-    let nframes = 200;
+    let nframes = 40;
     let mut frametime = 0.;
 
     for i in 0..nframes {
@@ -125,7 +125,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     println!("avg s per frame: {}", frametime / nframes as f64);
-    println!("bytes used (conservative): {}", cpu.block_cache.values().map(|v| v.len()*OP_SIZE + 4).sum::<usize>());
+    println!("n blocks: {}", cpu.hot_cache.iter().filter(|x| x.is_none()).count());
 
     Ok(())
 }
