@@ -6,13 +6,13 @@ use crate::instr::{Instruction as I, *};
 
 use super::*;
 
-use lower::Op;
-pub use lower::Block;
+pub use lower::{Block, Op};
 
 impl Cpu {
     #[inline(always)]
-    fn decode_block(&self, mut pc: u32) -> anyhow::Result<Rc<Block>> {
-        let mut block = Vec::new();
+    fn decode_block(&mut self, mut pc: u32) -> anyhow::Result<Rc<Block>> {
+        self.block_scratch.clear();
+
         loop {
             let (instr, size) = if I::next_is_compressed(self.load_u8(pc)?) {
                 let raw = I::decode_compressed(self.load_u16(pc)?)?;
@@ -21,7 +21,7 @@ impl Cpu {
                 let raw = I::decode(self.load_u32(pc)?)?;
                 (raw, 4)
             };
-            block.push(Op::new(instr, size)?);
+            self.block_scratch.push(Op::new(instr, size)?);
             
             match instr {
                 I::JumpAndLink(JumpAndLink { dest: _, offset }) => pc = pc.wrapping_add_signed(offset.into()),
@@ -30,7 +30,7 @@ impl Cpu {
             }
         }
 
-        Ok(Block::new(block))
+        Ok(Block::new(self.block_scratch.iter().copied()))
     }
 
     fn continue_execution(&mut self, h: &mut impl Hypervisor) -> anyhow::Result<()> {

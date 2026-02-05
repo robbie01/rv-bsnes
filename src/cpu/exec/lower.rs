@@ -19,7 +19,19 @@ pub union InstructionStream {
     sentinel: u64
 }
 
+const _: () = assert!(std::mem::size_of::<InstructionUnion>() == 8);
+
 const SENTINEL: InstructionStream = InstructionStream { sentinel: u64::MAX };
+
+impl Debug for InstructionStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if cfg!(miri) {
+            f.write_str("<instr-stream>")
+        } else {
+            write!(f, "0x{:X}", unsafe { self.sentinel })
+        }
+    }
+}
 
 macro_rules! advance {
     ($stream:expr) => {
@@ -689,6 +701,7 @@ impl Op {
 }
 
 #[repr(transparent)]
+#[derive(Debug)]
 pub struct Block([InstructionStream]);
 
 impl Block {
@@ -706,11 +719,5 @@ impl Block {
 
     pub fn execute(&self, cpu: &mut Cpu, h: &mut dyn Hypervisor) -> anyhow::Result<()> {
         unsafe { dispatch(cpu, h, self.0.as_ptr()) }
-    }
-}
-
-impl Debug for Block {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("...")
     }
 }

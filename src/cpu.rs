@@ -83,7 +83,8 @@ pub struct Cpu {
     pub memory: Memory,
 
     pub hot_cache: [Option<(u32, Rc<exec::Block>)>; HOT_SIZE],
-    pub block_cache: FnvHashMap<u32, Rc<exec::Block>>
+    pub block_cache: FnvHashMap<u32, Rc<exec::Block>>,
+    block_scratch: Vec<exec::Op>
 }
 
 impl Cpu {
@@ -95,7 +96,8 @@ impl Cpu {
             memory: Memory::new(0x10000000),
 
             hot_cache: [const { None }; _],
-            block_cache: FnvHashMap::default()
+            block_cache: FnvHashMap::default(),
+            block_scratch: Vec::new()
         };
 
         // initialize stack pointer (todo make this better LoL)
