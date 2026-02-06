@@ -67,7 +67,7 @@ impl<H: Hypervisor + ?Sized> Op<H> {
                 Word => cpu.load_u32(addr)?
             };
 
-            cpu.write_x(dest, v);
+            unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
@@ -154,7 +154,7 @@ impl<H: Hypervisor + ?Sized> Op<H> {
                 RemainderUnsigned => v1 % v2
             };
 
-            cpu.write_x(dest, v);
+            unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
@@ -170,7 +170,7 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             let ImmShift(ShiftLeft, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
             let v = src.unbounded_shl(u8::from(n).into());
 
-            cpu.write_x(dest, v);
+            unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
@@ -186,7 +186,7 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             let ImmShift(ShiftRightLogical, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
             let v = src.unbounded_shr(u8::from(n).into());
 
-            cpu.write_x(dest, v);
+            unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
@@ -202,7 +202,7 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             let ImmShift(ShiftRightArithmetic, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
             let v = (src as i32).unbounded_shr(u8::from(n).into()) as u32;
 
-            cpu.write_x(dest, v);
+            unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
@@ -218,7 +218,7 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             let Imm12(Add, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
             let v = (src as i32).wrapping_add(n.into()) as u32;
 
-            cpu.write_x(dest, v);
+            unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
@@ -234,7 +234,7 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             let Imm12(SetLessThan, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
             let v = ((src as i32) < i32::from(n)) as u32;
 
-            cpu.write_x(dest, v);
+            unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
@@ -250,7 +250,7 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             let Imm12(SetLessThanUnsigned, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
             let v = (src < (i32::from(n) as u32)) as u32;
 
-            cpu.write_x(dest, v);
+            unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
@@ -266,7 +266,7 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             let Imm12(Xor, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
             let v = src ^ (i32::from(n) as u32);
 
-            cpu.write_x(dest, v);
+            unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
@@ -282,7 +282,7 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             let Imm12(Or, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
             let v = src | (i32::from(n) as u32);
 
-            cpu.write_x(dest, v);
+            unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
@@ -298,7 +298,7 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             let Imm12(And, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
             let v = src & (i32::from(n) as u32);
 
-            cpu.write_x(dest, v);
+            unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
         
@@ -313,7 +313,7 @@ impl<H: Hypervisor + ?Sized> Op<H> {
                 AddUpperImmediateToPc => cpu.pc.wrapping_sub(SIZE).wrapping_add(u32::from(imm) << 12)
             };
 
-            cpu.write_x(dest, v);
+            unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
         

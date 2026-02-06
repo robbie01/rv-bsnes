@@ -94,7 +94,7 @@ impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
             .address().try_into()?)
     }
 
-    #[inline(always)]
+    #[inline(never)]
     fn before_instr(&mut self, ctx: &mut super::Cpu<Self>, instr: &Instruction) -> anyhow::Result<()> {
         if ERROR_ROUTINES.contains(&ctx.pc) {
             bail!("error routine reached\nstack: {:X?}", self.stack);
@@ -119,7 +119,7 @@ impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
         Ok(())
     }
 
-    #[inline(always)]
+    #[inline(never)]
     fn after_instr(&mut self, ctx: &mut super::Cpu<Self>, instr: &Instruction) -> anyhow::Result<()> {
         use crate::instr::{Instruction as I, *};
 
@@ -133,7 +133,7 @@ impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
         Ok(())
     }
 
-    #[inline(always)]
+    #[inline(never)]
     fn ebreak(&mut self, ctx: &mut super::Cpu<Self>) -> anyhow::Result<()> {
         match ctx.pc {
             0xe0000002 => { // jg_cb_log
@@ -157,7 +157,7 @@ impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
         }
     }
 
-    #[inline(always)]
+    #[inline(never)]
     fn ecall(&mut self, ctx: &mut super::Cpu<Self>) -> anyhow::Result<()> {
         match ctx.read_x(Register::A7) {
             214 => { // brk

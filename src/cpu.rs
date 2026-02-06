@@ -119,7 +119,8 @@ impl<H: ?Sized> Cpu<H> {
     }
 
     #[inline(always)]
-    pub unsafe fn write_x_nonzero(&mut self, x: Register, v: u32) {
+    pub unsafe fn write_x_unchecked(&mut self, x: Register, v: u32) {
+        debug_assert_ne!(x, Register::ZERO);
         *unsafe { self.x.get_unchecked_mut(usize::from(x)) } = v;
     }
 
