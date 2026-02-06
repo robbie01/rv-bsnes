@@ -14,6 +14,8 @@ pub struct Op<H: ?Sized> {
     instr: MaybeUninit<InstructionUnion>
 }
 
+const _: () = assert!(std::mem::size_of::<MaybeUninit<InstructionUnion>>() <= 2 * std::mem::size_of::<usize>());
+
 impl<H: ?Sized> Clone for Op<H> {
     fn clone(&self) -> Self {
         *self
@@ -674,18 +676,22 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             I::U(U { dest: Register::ZERO, .. }) |
             I::Fence => op_fn!(nop::<size>),
 
-            I::LoadInt(LoadInt { width, .. }) => op_fn!(load_int::<size, width>,
-                LoadWidth::Byte,
-                LoadWidth::ByteUnsigned,
-                LoadWidth::Half,
-                LoadWidth::HalfUnsigned,
-                LoadWidth::Word
-            ),
-            I::StoreInt(StoreInt { width, .. }) => op_fn!(store_int::<size, width>,
-                StoreWidth::Byte,
-                StoreWidth::Half,
-                StoreWidth::Word
-            ),
+            I::LoadInt(LoadInt { width, .. }) => match width {
+                LoadWidth::Word => op_fn!(load_int::<size, LoadWidth::Word>),
+                _ => op_fn_only_4!(load_int::<size, width>,
+                    LoadWidth::Byte,
+                    LoadWidth::ByteUnsigned,
+                    LoadWidth::Half,
+                    LoadWidth::HalfUnsigned
+                )
+            },
+            I::StoreInt(StoreInt { width, .. }) => match width {
+                StoreWidth::Word => op_fn!(store_int::<size, StoreWidth::Word>),
+                _ => op_fn_only_4!(store_int::<size, width>,
+                    StoreWidth::Byte,
+                    StoreWidth::Half
+                )
+            },
             I::LoadFp(_) => op_fn!(load_fp::<size>),
             I::StoreFp(_) => op_fn!(store_fp::<size>),
             I::Int(Int { funct, .. }) => match funct {

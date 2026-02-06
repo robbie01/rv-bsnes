@@ -2,9 +2,9 @@ mod exec;
 mod memory;
 pub mod linux;
 
-use std::{fmt::Debug, rc::Rc};
+use std::{convert::Infallible, fmt::Debug, rc::Rc};
 
-use anyhow::{Context, ensure};
+use anyhow::{Context, bail, ensure};
 use fnv::FnvHashMap;
 
 use crate::instr::{Instruction, Register};
@@ -142,110 +142,92 @@ impl<H: ?Sized> Cpu<H> {
 
 // Load/store helpers
 impl<H: ?Sized> Cpu<H> {
+    #[cold]
+    #[inline(never)]
+    fn oob<const STORE: bool>(&self, addr: u32) -> anyhow::Result<Infallible> {
+        if STORE {
+            bail!("oob store @ {addr:06X} (next pc = {:X})", self.pc)
+        } else {
+            bail!("oob load @ {addr:06X} (next pc = {:X})", self.pc)
+        }
+    }
+
     #[inline(always)]
     pub fn load_u32(&self, addr: u32) -> anyhow::Result<u32> {
-        Ok(u32::from_le_bytes(
-            self.memory.get(addr..addr+4)
-            .with_context(|| format!("oob load @ {addr:06X} (next pc = {:X})", self.pc))?
-            .try_into()?
-        ))
+        let Some(mem) = self.memory.get(addr..addr+4) else { return self.oob::<false>(addr).map(|v| match v {}) };
+        Ok(u32::from_le_bytes(mem.try_into()?))
     }
 
     #[inline(always)]
     pub fn load_u16(&self, addr: u32) -> anyhow::Result<u16> {
-        Ok(u16::from_le_bytes(
-            self.memory.get(addr..addr+2)
-            .with_context(|| format!("oob load @ {addr:06X} (next pc = {:X})", self.pc))?
-            .try_into()?
-        ))
+        let Some(mem) = self.memory.get(addr..addr+2) else { return self.oob::<false>(addr).map(|v| match v {}) };
+        Ok(u16::from_le_bytes(mem.try_into()?))
     }
 
     #[inline(always)]
     pub fn load_i16(&self, addr: u32) -> anyhow::Result<i16> {
-        Ok(i16::from_le_bytes(
-            self.memory.get(addr..addr+2)
-            .with_context(|| format!("oob load @ {addr:06X} (next pc = {:X})", self.pc))?
-            .try_into()?
-        ))
+        self.load_u16(addr).map(|v| v as i16)
     }
 
     #[inline(always)]
     pub fn load_u8(&self, addr: u32) -> anyhow::Result<u8> {
-        Ok(
-            self.memory.get(addr..addr+1)
-            .with_context(|| format!("oob load @ {addr:06X} (next pc = {:X})", self.pc))?
-            [0]
-        )
+        let Some(mem) = self.memory.get(addr..addr+1) else { return self.oob::<false>(addr).map(|v| match v {}) };
+        Ok(mem[0])
     }
 
     #[inline(always)]
     pub fn load_i8(&self, addr: u32) -> anyhow::Result<i8> {
-        Ok(
-            self.memory.get(addr..addr+1)
-            .with_context(|| format!("oob load @ {addr:06X} (next pc = {:X})", self.pc))?
-            [0] as i8
-        )
+        self.load_u8(addr).map(|v| v as i8)
     }
 
     #[inline(always)]
     pub fn load_f32(&self, addr: u32) -> anyhow::Result<f32> {
-        Ok(f32::from_le_bytes(
-            self.memory.get(addr..addr+4)
-            .with_context(|| format!("oob load @ {addr:06X} (next pc = {:X})", self.pc))?
-            .try_into()?
-        ))
+        let Some(mem) = self.memory.get(addr..addr+4) else { return self.oob::<false>(addr).map(|v| match v {}) };
+        Ok(f32::from_le_bytes(mem.try_into()?))
     }
 
     #[inline(always)]
     pub fn load_f64(&self, addr: u32) -> anyhow::Result<f64> {
-        Ok(f64::from_le_bytes(
-            self.memory.get(addr..addr+8)
-            .with_context(|| format!("oob load @ {addr:06X} (next pc = {:X})", self.pc))?
-            .try_into()?
-        ))
+        let Some(mem) = self.memory.get(addr..addr+8) else { return self.oob::<false>(addr).map(|v| match v {}) };
+        Ok(f64::from_le_bytes(mem.try_into()?))
     }
 
     #[inline(always)]
     pub fn store_u32(&mut self, addr: u32, value: u32) -> anyhow::Result<()> {
-        self.memory.get_mut(addr..addr+4)
-            .with_context(|| format!("oob store @ {addr:06X} (next pc = {:X})", self.pc))?
-            .copy_from_slice(&value.to_le_bytes());
+        let Some(mem) = self.memory.get_mut(addr..addr+4) else { return self.oob::<true>(addr).map(|v| match v {}) };
+        mem.copy_from_slice(&value.to_le_bytes());
 
         Ok(())
     }
 
     #[inline(always)]
     pub fn store_u16(&mut self, addr: u32, value: u16) -> anyhow::Result<()> {
-        self.memory.get_mut(addr..addr+2)
-            .with_context(|| format!("oob store @ {addr:06X} (next pc = {:X})", self.pc))?
-            .copy_from_slice(&value.to_le_bytes());
+        let Some(mem) = self.memory.get_mut(addr..addr+2) else { return self.oob::<true>(addr).map(|v| match v {}) };
+        mem.copy_from_slice(&value.to_le_bytes());
 
         Ok(())
     }
 
     #[inline(always)]
     pub fn store_u8(&mut self, addr: u32, value: u8) -> anyhow::Result<()> {
-        self.memory.get_mut(addr..addr+1)
-            .with_context(|| format!("oob store @ {addr:06X} (next pc = {:X})", self.pc))?
-            .copy_from_slice(&[value]);
+        let Some(mem) = self.memory.get_mut(addr..addr+1) else { return self.oob::<true>(addr).map(|v| match v {}) };
+        mem.copy_from_slice(&[value]);
 
         Ok(())
     }
 
     #[inline(always)]
     pub fn store_f32(&mut self, addr: u32, value: f32) -> anyhow::Result<()> {
-        self.memory.get_mut(addr..addr+4)
-            .with_context(|| format!("oob store @ {addr:06X} (next pc = {:X})", self.pc))?
-            .copy_from_slice(&value.to_le_bytes());
+        let Some(mem) = self.memory.get_mut(addr..addr+4) else { return self.oob::<true>(addr).map(|v| match v {}) };
+        mem.copy_from_slice(&value.to_le_bytes());
 
         Ok(())
     }
 
     #[inline(always)]
     pub fn store_f64(&mut self, addr: u32, value: f64) -> anyhow::Result<()> {
-        self.memory.get_mut(addr..addr+8)
-            .with_context(|| format!("oob store @ {addr:06X} (next pc = {:X})", self.pc))?
-            .copy_from_slice(&value.to_le_bytes());
+        let Some(mem) = self.memory.get_mut(addr..addr+8) else { return self.oob::<true>(addr).map(|v| match v {}) };
+        mem.copy_from_slice(&value.to_le_bytes());
 
         Ok(())
     }
