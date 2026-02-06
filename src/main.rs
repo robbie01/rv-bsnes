@@ -100,7 +100,7 @@ fn main() -> anyhow::Result<()> {
     eprintln!("calling jg_game_load...");
     cpu.call_subroutine_by_name(&mut h, "jg_game_load")?;
 
-    let nframes = 40;
+    let nframes = 200;
     let mut frametime = 0.;
 
     for i in 0..nframes {

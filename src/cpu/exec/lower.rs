@@ -1,46 +1,17 @@
 #![allow(unused_assignments)]
 
+use std::{iter, mem::MaybeUninit};
+
 use anyhow::{bail, ensure};
 
 use crate::{cpu::*, instr::{Instruction as I, *}};
 
-pub type OpFn = unsafe fn(&mut Cpu, &mut dyn Hypervisor, *const InstructionStream) -> anyhow::Result<()>;
+pub type OpFn = unsafe fn(&mut Cpu, &mut dyn Hypervisor, *const Op) -> anyhow::Result<()>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Op {
     op_fn: OpFn,
-    instr: InstructionUnion
-}
-
-#[derive(Clone, Copy)]
-pub union InstructionStream {
-    f: OpFn,
-    i: InstructionUnion,
-    sentinel: u64
-}
-
-const _: () = assert!(std::mem::size_of::<InstructionUnion>() == 8);
-
-const SENTINEL: InstructionStream = InstructionStream { sentinel: u64::MAX };
-
-impl Debug for InstructionStream {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if cfg!(miri) {
-            f.write_str("<instr-stream>")
-        } else {
-            write!(f, "0x{:X}", unsafe { self.sentinel })
-        }
-    }
-}
-
-macro_rules! advance {
-    ($stream:expr) => {
-        {
-            let tmp = $stream;
-            $stream = $stream.add(1);
-            *tmp
-        }
-    }
+    instr: MaybeUninit<InstructionUnion>
 }
 
 fn nte(rounding_mode: RoundingMode) -> anyhow::Result<()> {
@@ -51,19 +22,19 @@ fn nte(rounding_mode: RoundingMode) -> anyhow::Result<()> {
 }
 
 #[inline(always)]
-unsafe fn dispatch(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
-    unsafe { become (advance!(stream).f)(cpu, h, stream) }
+unsafe fn dispatch(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
+    unsafe { become ((*stream).op_fn)(cpu, h, stream) }
 }
 
-unsafe fn end(_: &mut Cpu, _: &mut dyn Hypervisor, _: *const InstructionStream) -> anyhow::Result<()> {
+unsafe fn end(_: &mut Cpu, _: &mut dyn Hypervisor, _: *const Op) -> anyhow::Result<()> {
     Ok(())
 }
 
 impl Op {
     pub fn new(instr: Instruction, size: u8) -> anyhow::Result<Self> {
-        unsafe fn load_int<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn load_int<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let LoadInt { dest, width, base, offset } = unsafe { advance!(stream).i.load_int };
+            let LoadInt { dest, width, base, offset } = unsafe { (*stream).instr.assume_init().load_int };
 
             use LoadWidth::*;
             let addr = cpu.read_x(base).wrapping_add_signed(offset.into());
@@ -77,12 +48,12 @@ impl Op {
             };
 
             cpu.write_x(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn store_int<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn store_int<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let StoreInt { offset, width, base, src } = unsafe { advance!(stream).i.store_int };
+            let StoreInt { offset, width, base, src } = unsafe { (*stream).instr.assume_init().store_int };
 
             use StoreWidth::*;
             let addr = cpu.read_x(base).wrapping_add_signed(offset.into());
@@ -94,12 +65,12 @@ impl Op {
                 Half => cpu.store_u16(addr, v as u16)?,
                 Word => cpu.store_u32(addr, v)?
             }
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn load_fp<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn load_fp<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let LoadFp { dest, width, base, offset } = unsafe { advance!(stream).i.load_fp };
+            let LoadFp { dest, width, base, offset } = unsafe { (*stream).instr.assume_init().load_fp };
 
             use FpWidth::*;
             let addr = cpu.read_x(base).wrapping_add_signed(offset.into());
@@ -110,12 +81,12 @@ impl Op {
             };
 
             cpu.write_f(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn store_fp<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn store_fp<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let StoreFp { offset, width, base, src } = unsafe { advance!(stream).i.store_fp };
+            let StoreFp { offset, width, base, src } = unsafe { (*stream).instr.assume_init().store_fp };
             
             use FpWidth::*;
             let addr = cpu.read_x(base).wrapping_add_signed(offset.into());
@@ -126,12 +97,12 @@ impl Op {
                 Word => cpu.store_f32(addr, v.read_f32())?,
                 Double => cpu.store_f64(addr, v.read_f64())?
             }
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn int<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn int<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let Int { dest, funct, src1, src2 } = unsafe { advance!(stream).i.int };
+            let Int { dest, funct, src1, src2 } = unsafe { (*stream).instr.assume_init().int };
 
             use IntegerFunct::*;
 
@@ -164,12 +135,12 @@ impl Op {
             };
 
             cpu.write_x(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn int_immediate_shift_left<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn int_immediate_shift_left<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let IntImmediate { dest, funct, src } = unsafe { advance!(stream).i.int_immediate };
+            let IntImmediate { dest, funct, src } = unsafe { (*stream).instr.assume_init().int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::ImmShift::*;
@@ -182,12 +153,12 @@ impl Op {
             };
 
             cpu.write_x(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn int_immediate_shift_right_logical<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn int_immediate_shift_right_logical<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let IntImmediate { dest, funct, src } = unsafe { advance!(stream).i.int_immediate };
+            let IntImmediate { dest, funct, src } = unsafe { (*stream).instr.assume_init().int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::ImmShift::*;
@@ -200,12 +171,12 @@ impl Op {
             };
 
             cpu.write_x(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn int_immediate_shift_right_arithmetic<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn int_immediate_shift_right_arithmetic<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let IntImmediate { dest, funct, src } = unsafe { advance!(stream).i.int_immediate };
+            let IntImmediate { dest, funct, src } = unsafe { (*stream).instr.assume_init().int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::ImmShift::*;
@@ -218,12 +189,12 @@ impl Op {
             };
 
             cpu.write_x(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn int_immediate_add<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn int_immediate_add<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let IntImmediate { dest, funct, src } = unsafe { advance!(stream).i.int_immediate };
+            let IntImmediate { dest, funct, src } = unsafe { (*stream).instr.assume_init().int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::Imm12::*;
@@ -236,12 +207,12 @@ impl Op {
             };
 
             cpu.write_x(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn int_immediate_set_less_than<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn int_immediate_set_less_than<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let IntImmediate { dest, funct, src } = unsafe { advance!(stream).i.int_immediate };
+            let IntImmediate { dest, funct, src } = unsafe { (*stream).instr.assume_init().int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::Imm12::*;
@@ -254,12 +225,12 @@ impl Op {
             };
 
             cpu.write_x(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn int_immediate_set_less_than_unsigned<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn int_immediate_set_less_than_unsigned<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let IntImmediate { dest, funct, src } = unsafe { advance!(stream).i.int_immediate };
+            let IntImmediate { dest, funct, src } = unsafe { (*stream).instr.assume_init().int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::Imm12::*;
@@ -272,12 +243,12 @@ impl Op {
             };
 
             cpu.write_x(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn int_immediate_xor<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn int_immediate_xor<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let IntImmediate { dest, funct, src } = unsafe { advance!(stream).i.int_immediate };
+            let IntImmediate { dest, funct, src } = unsafe { (*stream).instr.assume_init().int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::Imm12::*;
@@ -290,12 +261,12 @@ impl Op {
             };
 
             cpu.write_x(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn int_immediate_or<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn int_immediate_or<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let IntImmediate { dest, funct, src } = unsafe { advance!(stream).i.int_immediate };
+            let IntImmediate { dest, funct, src } = unsafe { (*stream).instr.assume_init().int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::Imm12::*;
@@ -308,12 +279,12 @@ impl Op {
             };
 
             cpu.write_x(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn int_immediate_and<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn int_immediate_and<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let IntImmediate { dest, funct, src } = unsafe { advance!(stream).i.int_immediate };
+            let IntImmediate { dest, funct, src } = unsafe { (*stream).instr.assume_init().int_immediate };
 
             use IntImmediateFunct::*;
             use crate::instr::Imm12::*;
@@ -326,12 +297,12 @@ impl Op {
             };
 
             cpu.write_x(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
         
-        unsafe fn u<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn u<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let U { type_, dest, imm } = unsafe { advance!(stream).i.u };
+            let U { type_, dest, imm } = unsafe { (*stream).instr.assume_init().u };
 
             use UType::*;
 
@@ -341,12 +312,12 @@ impl Op {
             };
 
             cpu.write_x(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
         
-        unsafe fn fp<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn fp<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let Fp { rounding_mode, funct, dest, src1, src2 } = unsafe { advance!(stream).i.fp };
+            let Fp { rounding_mode, funct, dest, src1, src2 } = unsafe { (*stream).instr.assume_init().fp };
 
             use RoundingMode::*;
 
@@ -407,7 +378,7 @@ impl Op {
                         },
                         _ => bail!("BADddd")
                     });
-                    unsafe { become dispatch(cpu, h, stream) }
+                    unsafe { become dispatch(cpu, h, stream.add(1)) }
                 },
                 MoveToXSingle => {
                     ensure!(src2 == Register::ZERO);
@@ -416,7 +387,7 @@ impl Op {
                         Zero => bail!("not yet implemented: classify"),
                         _ => bail!("baDD")
                     });
-                    unsafe { become dispatch(cpu, h, stream) }
+                    unsafe { become dispatch(cpu, h, stream.add(1)) }
                 },
                 CompareSingle => {
                     cpu.write_x(dest, match rounding_mode {
@@ -425,7 +396,7 @@ impl Op {
                         Down => v1.read_f32() == v2.read_f32(),
                         _ => bail!("bAddd")
                     } as u32);
-                    unsafe { become dispatch(cpu, h, stream) }
+                    unsafe { become dispatch(cpu, h, stream.add(1)) }
                 },
                 ConvertFromWordSingle => FRegister::write_f32(match src2 {
                     Register::ZERO => cpu.read_x(src1) as i32 as f32,
@@ -499,7 +470,7 @@ impl Op {
                         },
                         _ => bail!("BADddd")
                     });
-                    unsafe { become dispatch(cpu, h, stream) }
+                    unsafe { become dispatch(cpu, h, stream.add(1)) }
                 },
                 CompareDouble => {
                     cpu.write_x(dest, match rounding_mode {
@@ -508,7 +479,7 @@ impl Op {
                         Down => v1.read_f64() == v2.read_f64(),
                         _ => bail!("bAddd")
                     } as u32);
-                    unsafe { become dispatch(cpu, h, stream) }
+                    unsafe { become dispatch(cpu, h, stream.add(1)) }
                 },
                 ClassifyDouble => bail!("not yet implemented: classify double"),
                 ConvertFromWordDouble => FRegister::write_f64(match src2 {
@@ -519,12 +490,12 @@ impl Op {
             };
 
             cpu.write_f(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn fused<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn fused<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let Fused { type_, width, rounding_mode, dest, src1, src2, src3 } = unsafe { advance!(stream).i.fused };
+            let Fused { type_, width, rounding_mode, dest, src1, src2, src3 } = unsafe { (*stream).instr.assume_init().fused };
 
             use FloatWidth::*;
             use FuseType::*;
@@ -551,18 +522,18 @@ impl Op {
             };
 
             cpu.write_f(dest, v);
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
         
-        unsafe fn fence<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn fence<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let _ = unsafe { advance!(stream).i.fence };
-            unsafe { become dispatch(cpu, h, stream) }
+            let _ = unsafe { (*stream).instr.assume_init().fence };
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn amo<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn amo<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let Amo { dest, src1, src2, release: _, acquire: _, funct } = unsafe { advance!(stream).i.amo };
+            let Amo { dest, src1, src2, release: _, acquire: _, funct } = unsafe { (*stream).instr.assume_init().amo };
 
             use AmoFunct::*;
 
@@ -590,28 +561,28 @@ impl Op {
                 _ => bail!("not yet implemented: amo {funct:?}")
             }
 
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn jump_and_link<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
-            let JumpAndLink { dest, offset } = unsafe { advance!(stream).i.jump_and_link };
+        unsafe fn jump_and_link<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
+            let JumpAndLink { dest, offset } = unsafe { (*stream).instr.assume_init().jump_and_link };
             
             cpu.write_x(dest, cpu.pc+SIZE);
             cpu.pc = cpu.pc.wrapping_add_signed(offset.into());
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
         
-        unsafe fn jump_and_link_register<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
-            let JumpAndLinkRegister { dest, base, offset } = unsafe { advance!(stream).i.jump_and_link_register };
+        unsafe fn jump_and_link_register<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
+            let JumpAndLinkRegister { dest, base, offset } = unsafe { (*stream).instr.assume_init().jump_and_link_register };
             
             let addr = cpu.read_x(base).wrapping_add_signed(offset.into());
             cpu.write_x(dest, cpu.pc+SIZE);
             cpu.pc = addr;
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn branch<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
-            let Branch { offset, funct, src1, src2 } = unsafe { advance!(stream).i.branch };
+        unsafe fn branch<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
+            let Branch { offset, funct, src1, src2 } = unsafe { (*stream).instr.assume_init().branch };
 
             use BranchType::*;
             
@@ -630,21 +601,21 @@ impl Op {
             } else {
                 cpu.pc = cpu.pc.wrapping_add(SIZE);
             }
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn ebreak<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn ebreak<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let _ = unsafe { advance!(stream).i.system };
+            let _ = unsafe { (*stream).instr.assume_init().system };
             h.ebreak(cpu)?;
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
-        unsafe fn ecall<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, mut stream: *const InstructionStream) -> anyhow::Result<()> {
+        unsafe fn ecall<const SIZE: u32>(cpu: &mut Cpu, h: &mut dyn Hypervisor, stream: *const Op) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let _ = unsafe { advance!(stream).i.system };
+            let _ = unsafe { (*stream).instr.assume_init().system };
             h.ecall(cpu)?;
-            unsafe { become dispatch(cpu, h, stream) }
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
 
         macro_rules! op_fn {
@@ -696,23 +667,20 @@ impl Op {
             _ => bail!("not yet implemented: {instr:?}")
         };
 
-        Ok(Op { op_fn, instr: instr.into() })
+        Ok(Op { op_fn, instr: MaybeUninit::new(instr.into()) })
     }
 }
 
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct Block([InstructionStream]);
+pub struct Block([Op]);
 
 impl Block {
     pub fn new(ops: impl IntoIterator<Item = Op>) -> Rc<Self> {
-        let stream = ops.into_iter().flat_map(|op| [
-            InstructionStream { f: op.op_fn },
-            InstructionStream { i: op.instr }
-        ]).chain([
-            InstructionStream { f: end },
-            SENTINEL
-        ]).collect::<Rc<[_]>>();
+        let stream = ops.into_iter().chain(iter::once(Op {
+            op_fn: end,
+            instr: MaybeUninit::uninit()
+        })).collect::<Rc<[_]>>();
 
         unsafe { Rc::from_raw(Rc::into_raw(stream) as *const Self) }
     }
