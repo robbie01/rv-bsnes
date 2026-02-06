@@ -619,14 +619,14 @@ impl<H: Hypervisor + ?Sized> Op<H> {
                 match $size {
                     2 => $f::<H, 2>,
                     4 => $f::<H, 4>,
-                    _ => unreachable!()
+                    _ => unimplemented!()
                 }
             };
             ($f:ident::<$size:ident, $funct:path>) => {
                 match $size {
                     2 => $f::<H, 2, { $funct }>,
                     4 => $f::<H, 4, { $funct }>,
-                    _ => unreachable!()
+                    _ => unimplemented!()
                 }
             };
             ($f:ident::<$size:ident, $funct:ident>, $($variant:path),+) => {
@@ -635,7 +635,7 @@ impl<H: Hypervisor + ?Sized> Op<H> {
                         (2, $variant) => $f::<H, 2, { $variant }>,
                         (4, $variant) => $f::<H, 4, { $variant }>
                     ),+ ,
-                    _ => unreachable!()
+                    _ => unimplemented!()
                 }
             };
         }
@@ -644,13 +644,13 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             ($f:ident::<$size:ident>) => {
                 match $size {
                     4 => $f::<H, 4>,
-                    _ => unreachable!()
+                    _ => unimplemented!()
                 }
             };
             ($f:ident::<$size:ident, $funct:path>) => {
                 match $size {
                     4 => $f::<H, 4, { $funct }>,
-                    _ => unreachable!()
+                    _ => unimplemented!()
                 }
             };
             ($f:ident::<$size:ident, $funct:ident>, $($variant:path),+) => {
@@ -658,7 +658,7 @@ impl<H: Hypervisor + ?Sized> Op<H> {
                     $(
                         (4, $variant) => $f::<H, 4, { $variant }>
                     ),+ ,
-                    _ => unreachable!()
+                    _ => unimplemented!()
                 }
             };
         }
@@ -733,17 +733,9 @@ impl<H: Hypervisor + ?Sized> Op<H> {
 
             // Fun fake atomics for a single-threaded core
             I::Amo(Amo { funct, .. }) => op_fn_only_4!(amo::<size, funct>,
-                AmoFunct::Add,
                 AmoFunct::Swap,
                 AmoFunct::LoadReserved,
-                AmoFunct::StoreConditional,
-                AmoFunct::Xor,
-                AmoFunct::Or,
-                AmoFunct::And,
-                AmoFunct::Min,
-                AmoFunct::Max,
-                AmoFunct::MinUnsigned,
-                AmoFunct::MaxUnsigned
+                AmoFunct::StoreConditional
             ),
 
             I::JumpAndLink(_) => op_fn!(jump_and_link::<size>),
