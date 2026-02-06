@@ -57,37 +57,37 @@ impl Debug for FRegister {
 
 pub trait Hypervisor {
     #[expect(unused)]
-    fn before_instr(&mut self, ctx: &mut Cpu, instr: &Instruction) -> anyhow::Result<()>;
+    fn before_instr(&mut self, ctx: &mut Cpu<Self>, instr: &Instruction) -> anyhow::Result<()>;
     #[expect(unused)]
-    fn after_instr(&mut self, ctx: &mut Cpu, instr: &Instruction) -> anyhow::Result<()>;
+    fn after_instr(&mut self, ctx: &mut Cpu<Self>, instr: &Instruction) -> anyhow::Result<()>;
 
     fn symbol(&self, sym: &str) -> anyhow::Result<u32>;
 
-    fn ebreak(&mut self, ctx: &mut Cpu) -> anyhow::Result<()>;
-    fn ecall(&mut self, ctx: &mut Cpu) -> anyhow::Result<()>;
+    fn ebreak(&mut self, ctx: &mut Cpu<Self>) -> anyhow::Result<()>;
+    fn ecall(&mut self, ctx: &mut Cpu<Self>) -> anyhow::Result<()>;
 }
 
 pub trait LoadableHypervisor<'data>: Hypervisor {
     type Object: 'data;
 
-    fn load<'this>(&'this mut self, ctx: &mut Cpu, obj: &'data Self::Object) -> anyhow::Result<()> where 'data: 'this;
+    fn load<'this>(&'this mut self, ctx: &mut Cpu<Self>, obj: &'data Self::Object) -> anyhow::Result<()> where 'data: 'this;
 }
 
 const HOT_SIZE: usize = 1 << 14;
 
 #[derive(Clone, Debug)]
-pub struct Cpu {
+pub struct Cpu<H: ?Sized> {
     pc: u32,
     pub x: [u32; 32],
     pub f: [FRegister; 32],
     pub memory: Memory,
 
-    pub hot_cache: [Option<(u32, Rc<exec::Block>)>; HOT_SIZE],
-    pub block_cache: FnvHashMap<u32, Rc<exec::Block>>,
-    block_scratch: Vec<exec::Op>
+    pub hot_cache: [Option<(u32, Rc<exec::Block<H>>)>; HOT_SIZE],
+    pub block_cache: FnvHashMap<u32, Rc<exec::Block<H>>>,
+    block_scratch: Vec<exec::Op<H>>
 }
 
-impl Cpu {
+impl<H: ?Sized> Cpu<H> {
     pub fn new() -> Self {
         let mut this = Self {
             pc: u32::MAX,
@@ -119,6 +119,11 @@ impl Cpu {
     }
 
     #[inline(always)]
+    pub unsafe fn write_x_nonzero(&mut self, x: Register, v: u32) {
+        *unsafe { self.x.get_unchecked_mut(usize::from(x)) } = v;
+    }
+
+    #[inline(always)]
     pub fn read_f(&mut self, f: Register) -> FRegister {
         *unsafe { self.f.get_unchecked(usize::from(f)) }
     }
@@ -128,14 +133,14 @@ impl Cpu {
         *unsafe { self.f.get_unchecked_mut(usize::from(f)) } = v;
     }
 
-    pub fn load<'data, H: LoadableHypervisor<'data>>(&mut self, h: &mut H, elf: &'data H::Object) -> anyhow::Result<()> {
+    pub fn load<'data>(&mut self, h: &mut H, elf: &'data H::Object) -> anyhow::Result<()> where H: LoadableHypervisor<'data> {
         h.load(self, elf)?;
         Ok(())
     }
 }
 
 // Load/store helpers
-impl Cpu {
+impl<H: ?Sized> Cpu<H> {
     #[inline(always)]
     pub fn load_u32(&self, addr: u32) -> anyhow::Result<u32> {
         Ok(u32::from_le_bytes(

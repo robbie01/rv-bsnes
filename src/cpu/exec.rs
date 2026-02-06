@@ -8,9 +8,9 @@ use super::*;
 
 pub use lower::{Block, Op};
 
-impl Cpu {
+impl<H: Hypervisor + ?Sized> Cpu<H> {
     #[inline(always)]
-    fn decode_block(&mut self, mut pc: u32) -> anyhow::Result<Rc<Block>> {
+    fn decode_block(&mut self, mut pc: u32) -> anyhow::Result<Rc<Block<H>>> {
         self.block_scratch.clear();
 
         loop {
@@ -33,7 +33,7 @@ impl Cpu {
         Ok(Block::new(self.block_scratch.iter().copied()))
     }
 
-    fn continue_execution(&mut self, h: &mut impl Hypervisor) -> anyhow::Result<()> {
+    fn continue_execution(&mut self, h: &mut H) -> anyhow::Result<()> {
         if self.pc == 0 {
             bail!("tried to execute at address 0 (missing callback?)\nra = {:06X}", self.read_x(Register::RA));
         }
@@ -54,7 +54,7 @@ impl Cpu {
         Ok(())
     }
 
-    pub fn call_subroutine(&mut self, h: &mut impl Hypervisor, sub: u32) -> anyhow::Result<()> {
+    pub fn call_subroutine(&mut self, h: &mut H, sub: u32) -> anyhow::Result<()> {
         ensure!(self.pc == u32::MAX);
         self.pc = sub;
         self.write_x(Register::RA, u32::MAX); // sentinel
@@ -64,7 +64,7 @@ impl Cpu {
         Ok(())
     }
 
-    pub fn call_subroutine_by_name(&mut self, h: &mut impl Hypervisor, sub: &str) -> anyhow::Result<()> {
+    pub fn call_subroutine_by_name(&mut self, h: &mut H, sub: &str) -> anyhow::Result<()> {
         let addr = h.symbol(sub)?;
         self.call_subroutine(h, addr)
     }
