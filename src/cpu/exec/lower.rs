@@ -22,9 +22,16 @@ impl<H: ?Sized> Clone for Op<H> {
 
 impl<H: ?Sized> Copy for Op<H> {}
 
+#[inline(always)]
 fn nte(rounding_mode: RoundingMode) -> anyhow::Result<()> {
-    if rounding_mode != RoundingMode::NearestTieToEven && rounding_mode != RoundingMode::Dynamic {
+    #[cold]
+    #[inline(never)]
+    fn nte_cold(_: RoundingMode) -> anyhow::Result<()> {
         bail!("not yet implemented: rounding modes other than NTE");
+    }
+
+    if rounding_mode != RoundingMode::NearestTieToEven && rounding_mode != RoundingMode::Dynamic {
+        become nte_cold(rounding_mode)
     }
     Ok(())
 }
@@ -40,6 +47,11 @@ unsafe fn end<H: ?Sized>(_: &mut Cpu<H>, _: &mut H, _: *const Op<H>) -> anyhow::
 
 impl<H: Hypervisor + ?Sized> Op<H> {
     pub fn new(instr: Instruction, size: u8) -> anyhow::Result<Self> {
+        unsafe fn nop<H: Hypervisor + ?Sized, const SIZE: u32>(cpu: &mut Cpu<H>, h: &mut H, stream: *const Op<H>) -> anyhow::Result<()> {
+            cpu.pc = cpu.pc.wrapping_add(SIZE);
+            unsafe { become dispatch(cpu, h, stream.add(1)) }
+        }
+
         unsafe fn load_int<H: Hypervisor + ?Sized, const SIZE: u32, const WIDTH: LoadWidth>(cpu: &mut Cpu<H>, h: &mut H, stream: *const Op<H>) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
             let LoadInt { dest, width: _, base, offset } = unsafe { (*stream).instr.assume_init().load_int };
@@ -155,10 +167,8 @@ impl<H: Hypervisor + ?Sized> Op<H> {
 
             let src = cpu.read_x(src);
 
-            let v = match funct {
-                ImmShift(ShiftLeft, n) => src.unbounded_shl(u8::from(n).into()),
-                _ => unsafe { std::hint::unreachable_unchecked() }
-            };
+            let ImmShift(ShiftLeft, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
+            let v = src.unbounded_shl(u8::from(n).into());
 
             cpu.write_x(dest, v);
             unsafe { become dispatch(cpu, h, stream.add(1)) }
@@ -173,10 +183,8 @@ impl<H: Hypervisor + ?Sized> Op<H> {
 
             let src = cpu.read_x(src);
 
-            let v = match funct {
-                ImmShift(ShiftRightLogical, n) => src.unbounded_shr(u8::from(n).into()),
-                _ => unsafe { std::hint::unreachable_unchecked() }
-            };
+            let ImmShift(ShiftRightLogical, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
+            let v = src.unbounded_shr(u8::from(n).into());
 
             cpu.write_x(dest, v);
             unsafe { become dispatch(cpu, h, stream.add(1)) }
@@ -191,10 +199,8 @@ impl<H: Hypervisor + ?Sized> Op<H> {
 
             let src = cpu.read_x(src);
 
-            let v = match funct {
-                ImmShift(ShiftRightArithmetic, n) => (src as i32).unbounded_shr(u8::from(n).into()) as u32,
-                _ => unsafe { std::hint::unreachable_unchecked() }
-            };
+            let ImmShift(ShiftRightArithmetic, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
+            let v = (src as i32).unbounded_shr(u8::from(n).into()) as u32;
 
             cpu.write_x(dest, v);
             unsafe { become dispatch(cpu, h, stream.add(1)) }
@@ -209,10 +215,8 @@ impl<H: Hypervisor + ?Sized> Op<H> {
 
             let src = cpu.read_x(src);
 
-            let v = match funct {
-                Imm12(Add, n) => (src as i32).wrapping_add(n.into()) as u32,
-                _ => unsafe { std::hint::unreachable_unchecked() }
-            };
+            let Imm12(Add, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
+            let v = (src as i32).wrapping_add(n.into()) as u32;
 
             cpu.write_x(dest, v);
             unsafe { become dispatch(cpu, h, stream.add(1)) }
@@ -227,10 +231,8 @@ impl<H: Hypervisor + ?Sized> Op<H> {
 
             let src = cpu.read_x(src);
 
-            let v = match funct {
-                Imm12(SetLessThan, n) => ((src as i32) < i32::from(n)) as u32,
-                _ => unsafe { std::hint::unreachable_unchecked() }
-            };
+            let Imm12(SetLessThan, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
+            let v = ((src as i32) < i32::from(n)) as u32;
 
             cpu.write_x(dest, v);
             unsafe { become dispatch(cpu, h, stream.add(1)) }
@@ -245,10 +247,8 @@ impl<H: Hypervisor + ?Sized> Op<H> {
 
             let src = cpu.read_x(src);
 
-            let v = match funct {
-                Imm12(SetLessThanUnsigned, n) => (src < (i32::from(n) as u32)) as u32,
-                _ => unsafe { std::hint::unreachable_unchecked() }
-            };
+            let Imm12(SetLessThanUnsigned, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
+            let v = (src < (i32::from(n) as u32)) as u32;
 
             cpu.write_x(dest, v);
             unsafe { become dispatch(cpu, h, stream.add(1)) }
@@ -263,10 +263,8 @@ impl<H: Hypervisor + ?Sized> Op<H> {
 
             let src = cpu.read_x(src);
 
-            let v = match funct {
-                Imm12(Xor, n) => src ^ (i32::from(n) as u32),
-                _ => unsafe { std::hint::unreachable_unchecked() }
-            };
+            let Imm12(Xor, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
+            let v = src ^ (i32::from(n) as u32);
 
             cpu.write_x(dest, v);
             unsafe { become dispatch(cpu, h, stream.add(1)) }
@@ -281,10 +279,8 @@ impl<H: Hypervisor + ?Sized> Op<H> {
 
             let src = cpu.read_x(src);
 
-            let v = match funct {
-                Imm12(Or, n) => src | (i32::from(n) as u32),
-                _ => unsafe { std::hint::unreachable_unchecked() }
-            };
+            let Imm12(Or, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
+            let v = src | (i32::from(n) as u32);
 
             cpu.write_x(dest, v);
             unsafe { become dispatch(cpu, h, stream.add(1)) }
@@ -299,10 +295,8 @@ impl<H: Hypervisor + ?Sized> Op<H> {
 
             let src = cpu.read_x(src);
 
-            let v = match funct {
-                Imm12(And, n) => src & (i32::from(n) as u32),
-                _ => unsafe { std::hint::unreachable_unchecked() }
-            };
+            let Imm12(And, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
+            let v = src & (i32::from(n) as u32);
 
             cpu.write_x(dest, v);
             unsafe { become dispatch(cpu, h, stream.add(1)) }
@@ -532,12 +526,6 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             cpu.write_f(dest, v);
             unsafe { become dispatch(cpu, h, stream.add(1)) }
         }
-        
-        unsafe fn fence<H: Hypervisor + ?Sized, const SIZE: u32>(cpu: &mut Cpu<H>, h: &mut H, stream: *const Op<H>) -> anyhow::Result<()> {
-            cpu.pc = cpu.pc.wrapping_add(SIZE);
-            let _ = unsafe { (*stream).instr.assume_init().fence };
-            unsafe { become dispatch(cpu, h, stream.add(1)) }
-        }
 
         unsafe fn amo<H: Hypervisor + ?Sized, const SIZE: u32, const FUNCT: AmoFunct>(cpu: &mut Cpu<H>, h: &mut H, stream: *const Op<H>) -> anyhow::Result<()> {
             cpu.pc = cpu.pc.wrapping_add(SIZE);
@@ -676,6 +664,12 @@ impl<H: Hypervisor + ?Sized> Op<H> {
         }
 
         let op_fn = match instr {
+            I::LoadInt(LoadInt { dest: Register::ZERO, .. }) |
+            I::Int(Int { dest: Register::ZERO, .. }) |
+            I::IntImmediate(IntImmediate { dest: Register::ZERO, .. }) |
+            I::U(U { dest: Register::ZERO, .. }) |
+            I::Fence => op_fn!(nop::<size>),
+
             I::LoadInt(LoadInt { width, .. }) => op_fn!(load_int::<size, width>,
                 LoadWidth::Byte,
                 LoadWidth::ByteUnsigned,
@@ -738,7 +732,6 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             I::Fused(_) => op_fn_only_4!(fused::<size>),
 
             // Fun fake atomics for a single-threaded core
-            I::Fence => op_fn_only_4!(fence::<size>),
             I::Amo(Amo { funct, .. }) => op_fn_only_4!(amo::<size, funct>,
                 AmoFunct::Add,
                 AmoFunct::Swap,
