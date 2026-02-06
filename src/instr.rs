@@ -1,6 +1,6 @@
 mod data;
 
-use std::fmt::Debug;
+use std::{fmt::Debug, marker::ConstParamTy};
 
 use anyhow::bail;
 pub use data::*;
@@ -71,7 +71,7 @@ pub struct IntImmediate {
     pub src: Register
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ConstParamTy)]
 pub enum UType {
     AddUpperImmediateToPc,
     LoadUpperImmediate

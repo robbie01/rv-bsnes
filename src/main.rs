@@ -1,3 +1,4 @@
+#![feature(adt_const_params)]
 #![feature(explicit_tail_calls)]
 #![expect(incomplete_features)]
 
@@ -125,12 +126,13 @@ fn main() -> anyhow::Result<()> {
     }
 
     println!("avg s per frame: {}", frametime / nframes as f64);
-    for item in cpu.hot_cache.into_iter().rev() {
-        if let Some((pc, block)) = item {
-            println!("{pc:X}, {block:?}");
-            break
-        }
-    }
+    println!("hot cache usage: {}", cpu.hot_cache.iter().filter(|v| v.is_none()).count());
+    // for item in cpu.hot_cache.into_iter().rev() {
+    //     if let Some((pc, block)) = item {
+    //         println!("{pc:X}, {block:?}");
+    //         break
+    //     }
+    // }
 
     Ok(())
 }

@@ -1,3 +1,4 @@
+use std::marker::ConstParamTy;
 use anyhow::bail;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,7 +54,7 @@ impl From<Register> for usize {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ConstParamTy)]
 #[repr(u8)]
 pub enum LoadWidth {
     Byte,
@@ -63,7 +64,7 @@ pub enum LoadWidth {
     HalfUnsigned
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ConstParamTy)]
 #[repr(u8)]
 pub enum StoreWidth {
     Byte,
@@ -307,7 +308,7 @@ impl IntImmediateFunct {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ConstParamTy)]
 #[repr(u8)]
 pub enum IntegerFunct {
     Add,
@@ -361,7 +362,7 @@ impl IntegerFunct {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ConstParamTy)]
 #[repr(u8)]
 pub enum BranchType {
     Equal,
@@ -549,7 +550,7 @@ impl CsrFunct {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ConstParamTy)]
 #[repr(u8)]
 pub enum AmoFunct {
     Add,
