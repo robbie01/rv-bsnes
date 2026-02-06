@@ -626,10 +626,40 @@ impl Op {
                     _ => unreachable!()
                 }
             };
+            ($f:ident::<$size:ident, $funct:path>) => {
+                match $size {
+                    2 => $f::<2, { $funct }>,
+                    4 => $f::<4, { $funct }>,
+                    _ => unreachable!()
+                }
+            };
             ($f:ident::<$size:ident, $funct:ident>, $($variant:path),+) => {
                 match ($size, $funct) {
                     $(
                         (2, $variant) => $f::<2, { $variant }>,
+                        (4, $variant) => $f::<4, { $variant }>
+                    ),+ ,
+                    _ => unreachable!()
+                }
+            };
+        }
+
+        macro_rules! op_fn_only_4 {
+            ($f:ident::<$size:ident>) => {
+                match $size {
+                    4 => $f::<4>,
+                    _ => unreachable!()
+                }
+            };
+            ($f:ident::<$size:ident, $funct:path>) => {
+                match $size {
+                    4 => $f::<4, { $funct }>,
+                    _ => unreachable!()
+                }
+            };
+            ($f:ident::<$size:ident, $funct:ident>, $($variant:path),+) => {
+                match ($size, $funct) {
+                    $(
                         (4, $variant) => $f::<4, { $variant }>
                     ),+ ,
                     _ => unreachable!()
@@ -652,26 +682,30 @@ impl Op {
             ),
             I::LoadFp(_) => op_fn!(load_fp::<size>),
             I::StoreFp(_) => op_fn!(store_fp::<size>),
-            I::Int(Int { funct, .. }) => op_fn!(int::<size, funct>,
-                IntegerFunct::Add,
-                IntegerFunct::ShiftLeft,
-                IntegerFunct::SetLessThan,
-                IntegerFunct::SetLessThanUnsigned,
-                IntegerFunct::Xor,
-                IntegerFunct::ShiftRight,
-                IntegerFunct::Or,
-                IntegerFunct::And,
-                IntegerFunct::Subtract,
-                IntegerFunct::ShiftRightArithmetic,
-                IntegerFunct::Multiply,
-                IntegerFunct::MultiplyHalf,
-                IntegerFunct::MultiplyHalfSignedUnsigned,
-                IntegerFunct::MultiplyHalfUnsigned,
-                IntegerFunct::Divide,
-                IntegerFunct::DivideUnsigned,
-                IntegerFunct::Remainder,
-                IntegerFunct::RemainderUnsigned
-            ),
+            I::Int(Int { funct, .. }) => match funct {
+                IntegerFunct::Add | IntegerFunct::Xor | IntegerFunct::Or | IntegerFunct::And | IntegerFunct::Subtract => op_fn!(int::<size, funct>,
+                    IntegerFunct::Add,
+                    IntegerFunct::Xor,
+                    IntegerFunct::Or,
+                    IntegerFunct::And,
+                    IntegerFunct::Subtract
+                ),
+                _ => op_fn_only_4!(int::<size, funct>,
+                    IntegerFunct::ShiftLeft,
+                    IntegerFunct::SetLessThan,
+                    IntegerFunct::SetLessThanUnsigned,
+                    IntegerFunct::ShiftRight,
+                    IntegerFunct::ShiftRightArithmetic,
+                    IntegerFunct::Multiply,
+                    IntegerFunct::MultiplyHalf,
+                    IntegerFunct::MultiplyHalfSignedUnsigned,
+                    IntegerFunct::MultiplyHalfUnsigned,
+                    IntegerFunct::Divide,
+                    IntegerFunct::DivideUnsigned,
+                    IntegerFunct::Remainder,
+                    IntegerFunct::RemainderUnsigned
+                )
+            },
             I::IntImmediate(IntImmediate { funct, .. }) => {
                 use crate::instr::IntImmediateFunct::*;
                 use crate::instr::{ImmShift::*, Imm12::*};
@@ -681,23 +715,23 @@ impl Op {
                     ImmShift(ShiftRightLogical, _) => op_fn!(int_immediate_shift_right_logical::<size>),
                     ImmShift(ShiftRightArithmetic, _) => op_fn!(int_immediate_shift_right_arithmetic::<size>),
                     Imm12(Add, _) => op_fn!(int_immediate_add::<size>),
-                    Imm12(SetLessThan, _) => op_fn!(int_immediate_set_less_than::<size>),
-                    Imm12(SetLessThanUnsigned, _) => op_fn!(int_immediate_set_less_than_unsigned::<size>),
-                    Imm12(Xor, _) => op_fn!(int_immediate_xor::<size>),
-                    Imm12(Or, _) => op_fn!(int_immediate_or::<size>),
+                    Imm12(SetLessThan, _) => op_fn_only_4!(int_immediate_set_less_than::<size>),
+                    Imm12(SetLessThanUnsigned, _) => op_fn_only_4!(int_immediate_set_less_than_unsigned::<size>),
+                    Imm12(Xor, _) => op_fn_only_4!(int_immediate_xor::<size>),
+                    Imm12(Or, _) => op_fn_only_4!(int_immediate_or::<size>),
                     Imm12(And, _) => op_fn!(int_immediate_and::<size>),
                 }
             },
-            I::U(U { type_, .. }) => op_fn!(u::<size, type_>,
-                UType::AddUpperImmediateToPc,
-                UType::LoadUpperImmediate
-            ),
-            I::Fp(_) => op_fn!(fp::<size>),
-            I::Fused(_) => op_fn!(fused::<size>),
+            I::U(U { type_, .. }) => match type_ {
+                UType::AddUpperImmediateToPc => op_fn_only_4!(u::<size, UType::AddUpperImmediateToPc>),
+                UType::LoadUpperImmediate => op_fn!(u::<size, UType::LoadUpperImmediate>),
+            },
+            I::Fp(_) => op_fn_only_4!(fp::<size>),
+            I::Fused(_) => op_fn_only_4!(fused::<size>),
 
             // Fun fake atomics for a single-threaded core
-            I::Fence => op_fn!(fence::<size>),
-            I::Amo(Amo { funct, .. }) => op_fn!(amo::<size, funct>,
+            I::Fence => op_fn_only_4!(fence::<size>),
+            I::Amo(Amo { funct, .. }) => op_fn_only_4!(amo::<size, funct>,
                 AmoFunct::Add,
                 AmoFunct::Swap,
                 AmoFunct::LoadReserved,
@@ -713,17 +747,24 @@ impl Op {
 
             I::JumpAndLink(_) => op_fn!(jump_and_link::<size>),
             I::JumpAndLinkRegister(_) => op_fn!(jump_and_link_register::<size>),
-            I::Branch(Branch { funct, .. }) => op_fn!(branch::<size, funct>,
-                BranchType::Equal,
-                BranchType::NotEqual,
-                BranchType::LessThan,
-                BranchType::GreaterThanOrEqual,
-                BranchType::LessThanUnsigned,
-                BranchType::GreaterThanOrEqualUnsigned
-            ),
+            I::Branch(Branch { funct, .. }) => match funct {
+                BranchType::Equal | BranchType::NotEqual => op_fn!(branch::<size, funct>,
+                    BranchType::Equal,
+                    BranchType::NotEqual
+                ),
+                BranchType::LessThan |
+                BranchType::GreaterThanOrEqual |
+                BranchType::LessThanUnsigned |
+                BranchType::GreaterThanOrEqualUnsigned => op_fn_only_4!(branch::<size, funct>,
+                    BranchType::LessThan,
+                    BranchType::GreaterThanOrEqual,
+                    BranchType::LessThanUnsigned,
+                    BranchType::GreaterThanOrEqualUnsigned
+                )
+            },
             
             I::System(System::Ebreak) => op_fn!(ebreak::<size>),
-            I::System(System::Ecall) => op_fn!(ecall::<size>),
+            I::System(System::Ecall) => op_fn_only_4!(ecall::<size>),
             _ => bail!("not yet implemented: {instr:?}")
         };
 
