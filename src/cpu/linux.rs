@@ -4,7 +4,7 @@ use anyhow::{Context as _, anyhow, bail, ensure};
 use object::{Architecture, LittleEndian, Object as _, ObjectSection, ObjectSymbol as _, elf::SHF_ALLOC, read::elf::ElfFile32};
 use stable_vec::ExternStableVec;
 
-use crate::{fs::FILES, instr::{I12, Instruction, JumpAndLink, JumpAndLinkRegister, Register}};
+use crate::{fs::FILES, instr::Register};
 
 #[derive(Debug)]
 struct FileDescriptor {
@@ -19,8 +19,7 @@ pub struct LinuxHypervisor<'data> {
 
     bss: u32,
     brk: u32,
-    stack: Vec<u32>,
-    breakpoint_reached: bool
+    stack: Vec<u32>
 }
 
 const ERROR_ROUTINES: [u32; 2] = [
@@ -94,42 +93,18 @@ impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
             .address().try_into()?)
     }
 
-    #[inline(never)]
-    fn before_instr(&mut self, ctx: &mut super::Cpu<Self>, instr: &Instruction) -> anyhow::Result<()> {
-        if ERROR_ROUTINES.contains(&ctx.pc) {
+    #[inline(always)]
+    fn before_block(&mut self, ctx: &mut super::Cpu<Self>) -> anyhow::Result<()> {
+        #[allow(clippy::overly_complex_bool_expr)]
+        if false && ERROR_ROUTINES.contains(&ctx.pc) {
             bail!("error routine reached\nstack: {:X?}", self.stack);
         }
 
-        if false {
-            // if ctx.pc == 0x623f6a { // co_swap
-            //     println!("context switch!");
-            // }
-            if self.breakpoint_reached {
-                print!("\na0 = {:X}\nstack: {:X?}\n{:X}: {instr:?}", ctx.read_x(Register::A0), self.stack, ctx.pc);
-            }
-
-            match instr {
-                Instruction::JumpAndLink(JumpAndLink { dest: Register::RA, .. }) | Instruction::JumpAndLinkRegister(JumpAndLinkRegister { dest: Register::RA, .. }) =>
-                    { self.stack.push(ctx.pc); },
-                Instruction::JumpAndLinkRegister(JumpAndLinkRegister { dest: Register::ZERO, base: Register::RA, offset: I12::ZERO }) =>
-                    { self.stack.pop(); },
-                _ => ()
-            }
-        }
         Ok(())
     }
 
-    #[inline(never)]
-    fn after_instr(&mut self, ctx: &mut super::Cpu<Self>, instr: &Instruction) -> anyhow::Result<()> {
-        use crate::instr::{Instruction as I, *};
-
-        if self.breakpoint_reached {
-            match *instr {
-                I::Int(Int { dest, .. }) | I::IntImmediate(IntImmediate { dest, .. }) | I::LoadInt(LoadInt { dest, .. }) | I::U(U { dest, .. }) =>
-                    println!(" x{} => {}", u8::from(dest), ctx.read_x(dest)),
-                _ => println!()
-            }
-        }
+    #[inline(always)]
+    fn after_block(&mut self, _ctx: &mut super::Cpu<Self>) -> anyhow::Result<()> {
         Ok(())
     }
 

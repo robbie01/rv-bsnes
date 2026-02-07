@@ -7,7 +7,7 @@ use std::{convert::Infallible, fmt::Debug, rc::Rc};
 use anyhow::{Context, bail, ensure};
 use fnv::FnvHashMap;
 
-use crate::instr::{Instruction, Register};
+use crate::instr::Register;
 use memory::Memory;
 
 const CANONICAL_NAN_F32: f32 = f32::from_bits(0x7fc00000);
@@ -56,10 +56,8 @@ impl Debug for FRegister {
 }
 
 pub trait Hypervisor {
-    #[expect(unused)]
-    fn before_instr(&mut self, ctx: &mut Cpu<Self>, instr: &Instruction) -> anyhow::Result<()>;
-    #[expect(unused)]
-    fn after_instr(&mut self, ctx: &mut Cpu<Self>, instr: &Instruction) -> anyhow::Result<()>;
+    fn before_block(&mut self, ctx: &mut Cpu<Self>) -> anyhow::Result<()>;
+    fn after_block(&mut self, ctx: &mut Cpu<Self>) -> anyhow::Result<()>;
 
     fn symbol(&self, sym: &str) -> anyhow::Result<u32>;
 

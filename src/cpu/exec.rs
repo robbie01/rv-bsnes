@@ -59,7 +59,9 @@ impl<H: Hypervisor + ?Sized> Cpu<H> {
         self.pc = sub;
         self.write_x(Register::RA, u32::MAX); // sentinel
         while self.pc != u32::MAX {
+            h.before_block(self)?;
             self.continue_execution(h)?;
+            h.after_block(self)?;
         }
         Ok(())
     }
