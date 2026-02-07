@@ -34,7 +34,7 @@ fn main() -> anyhow::Result<()> {
         cpu.call_subroutine(&mut h, ctor)?;
     }
 
-    let game_addr = cpu.memory.kmalloc(game.len().try_into()?).context("couldn't alloc space for game")?;
+    let game_addr = h.kmalloc(game.len().try_into()?).context("couldn't alloc space for game")?;
     cpu.store_slice(game_addr, game)?;
 
     let gameinfo: Vec<u8> = [
@@ -46,7 +46,7 @@ fn main() -> anyhow::Result<()> {
         0xfffffffe,
         0xfffffffe
     ].into_iter().flat_map(u32::to_le_bytes).collect();
-    let gameinfo_addr = cpu.memory.kmalloc(gameinfo.len().try_into()?).context("couldn't alloc space for gameinfo")?;
+    let gameinfo_addr = h.kmalloc(gameinfo.len().try_into()?).context("couldn't alloc space for gameinfo")?;
     cpu.store_slice(gameinfo_addr, &gameinfo)?;
 
     let pathinfo: Vec<u8> = [
@@ -56,7 +56,7 @@ fn main() -> anyhow::Result<()> {
         0xfffffffe,
         0xfffffffe
     ].into_iter().flat_map(u32::to_le_bytes).collect();
-    let pathinfo_addr = cpu.memory.kmalloc(pathinfo.len().try_into()?).context("couldn't alloc space for pathinfo")?;
+    let pathinfo_addr = h.kmalloc(pathinfo.len().try_into()?).context("couldn't alloc space for pathinfo")?;
     cpu.store_slice(pathinfo_addr, &pathinfo)?;
 
     eprintln!("calling jg_init...");
@@ -78,8 +78,8 @@ fn main() -> anyhow::Result<()> {
     cpu.write_x(Register::A0, pathinfo_addr);
     cpu.call_subroutine_by_name(&mut h, "jg_set_paths")?;
 
-    let inputstate = cpu.memory.kmalloc(16).context("couldn't alloc inputstate")?;
-    let buttons = cpu.memory.kmalloc(12).context("couldn't alloc buttons")?;
+    let inputstate = h.kmalloc(16).context("couldn't alloc inputstate")?;
+    let buttons = h.kmalloc(12).context("couldn't alloc buttons")?;
     cpu.store_u32(inputstate+4, buttons)?;
     eprintln!("calling jg_set_inputstate...");
     cpu.write_x(Register::A0, inputstate);
@@ -89,7 +89,7 @@ fn main() -> anyhow::Result<()> {
     cpu.write_x(Register::A1, 1);
     cpu.call_subroutine_by_name(&mut h, "jg_set_inputstate")?;
 
-    let video_addr = cpu.memory.kmalloc(4 * 253440).context("couldn't alloc vid buf")?;
+    let video_addr = h.kmalloc(4 * 253440).context("couldn't alloc vid buf")?;
     eprintln!("calling jg_get_videoinfo...");
     cpu.call_subroutine_by_name(&mut h, "jg_get_videoinfo")?;
     let vidinfo_addr = cpu.read_x(Register::A0);

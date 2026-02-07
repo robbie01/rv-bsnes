@@ -16,10 +16,7 @@ const TRAP: [u8; 4] = [
 #[derive(Clone)]
 pub struct Memory {
     program: Box<[u8]>, // starts at 0
-    fun_area: Box<[u8; 256*1024*1024]>, // 0xf0000000-END
-
-    mmap_bottom: u32,
-    kmalloc_top: u32
+    fun_area: Box<[u8; 256*1024*1024]> // 0xf0000000-END
 }
 
 impl Debug for Memory {
@@ -39,9 +36,6 @@ impl Memory {
         Self {
             program: zeroed_slice(program_size),
             fun_area: zeroed_array(),
-
-            mmap_bottom: 0xff000000,
-            kmalloc_top: 0xf0000000
         }
     }
 
@@ -78,29 +72,6 @@ impl Memory {
             Some(&mut self.program[range.start.try_into().ok()?..range.end.try_into().ok()?])
         } else {
             None
-        }
-    }
-
-    pub fn mmap_anon(&mut self, size: u32) -> Option<u32> {
-        let size = size.next_multiple_of(4096);
-        let new_bottom = self.mmap_bottom.checked_sub(size)?;
-        if new_bottom < 0xf1000000 {
-            None
-        } else {
-            self.mmap_bottom = new_bottom;
-            Some(new_bottom)
-        }
-    }
-
-    pub fn kmalloc(&mut self, size: u32) -> Option<u32> {
-        let size = size.next_multiple_of(4);
-        let new_top = self.kmalloc_top.checked_add(size)?;
-        if new_top > 0xf1000000 {
-            None
-        } else {
-            let addr = self.kmalloc_top;
-            self.kmalloc_top = new_top;
-            Some(addr)
         }
     }
 }

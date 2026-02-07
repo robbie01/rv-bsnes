@@ -12,14 +12,30 @@ struct FileDescriptor {
     pos: usize
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct LinuxHypervisor<'data> {
     image: Option<&'data ElfFile32<'data, LittleEndian>>,
     fds: ExternStableVec<FileDescriptor>,
 
     bss: u32,
     brk: u32,
-    stack: Vec<u32>
+
+    mmap_bottom: u32,
+    kmalloc_top: u32
+}
+
+impl<'data> Default for LinuxHypervisor<'data> {
+    fn default() -> Self {
+        Self {
+            image: None,
+            fds: ExternStableVec::new(),
+            bss: 0,
+            brk: 0,
+
+            mmap_bottom: 0xff000000,
+            kmalloc_top: 0xf0000000
+        }
+    }
 }
 
 const ERROR_ROUTINES: [u32; 2] = [
@@ -31,21 +47,32 @@ const ERROR_ROUTINES: [u32; 2] = [
 const TCB_SIZE: u32 = 0x70;
 
 impl<'data> LinuxHypervisor<'data> {
+    pub fn kmalloc(&mut self, size: u32) -> Option<u32> {
+        let size = size.next_multiple_of(4);
+        let new_top = self.kmalloc_top.checked_add(size)?;
+        if new_top > 0xf1000000 {
+            None
+        } else {
+            let addr = self.kmalloc_top;
+            self.kmalloc_top = new_top;
+            Some(addr)
+        }
+    }
+
     // __init_libc
     fn init_libc(&mut self, ctx: &mut super::Cpu<Self>) -> anyhow::Result<()> {
-        let image = self.image.as_ref().unwrap();
-        let libc: u32 = image.symbol_by_name("__libc").context("no __libc")?.address().try_into()?;
+        let libc: u32 = self.image.as_ref().unwrap().symbol_by_name("__libc").context("no __libc")?.address().try_into()?;
 
-        let auxv_addr = ctx.memory.kmalloc(8).context("couldn't alloc auxv")?;
+        let auxv_addr = self.kmalloc(8).context("couldn't alloc auxv")?;
         ctx.store_u32(libc.checked_add(8).context("bad __libc")?, auxv_addr)?;
 
         // page_size
         ctx.store_u32(libc.checked_add(0x1c).context("bad __libc")?, 4096)?;
 
-        let tp = ctx.memory.kmalloc(TCB_SIZE).context("couldn't allocate tcb")? + TCB_SIZE;
+        let tp = self.kmalloc(TCB_SIZE).context("couldn't allocate tcb")? + TCB_SIZE;
         ctx.write_x(Register::TP, tp);
 
-        let utf8_locale: u32 = image.symbol_by_name("__c_dot_utf8_locale").context("no __c_dot_utf8_locale")?.address().try_into()?;
+        let utf8_locale: u32 = self.image.as_ref().unwrap().symbol_by_name("__c_dot_utf8_locale").context("no __c_dot_utf8_locale")?.address().try_into()?;
         ctx.store_u32(tp - 0x18, utf8_locale)?;
 
         Ok(())
@@ -97,7 +124,7 @@ impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
     fn before_block(&mut self, ctx: &mut super::Cpu<Self>) -> anyhow::Result<()> {
         #[allow(clippy::overly_complex_bool_expr)]
         if false && ERROR_ROUTINES.contains(&ctx.pc) {
-            bail!("error routine reached\nstack: {:X?}", self.stack);
+            bail!("error routine reached");
         }
 
         Ok(())
@@ -128,7 +155,7 @@ impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
                 eprintln!("frametime = {frametime}");
                 Ok(())
             }
-            _ => Err(anyhow!("EBREAK reached\npc = {:X}\nStack trace: {:X?}", ctx.pc, self.stack))
+            _ => Err(anyhow!("EBREAK reached\npc = {:X}", ctx.pc))
         }
     }
 
@@ -156,7 +183,16 @@ impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
                 } else if flags & 0x10 != 0 { // MAP_FIXED
                     -12i32 as u32 // ENOMEM
                 } else {
-                    let alloc = ctx.memory.mmap_anon(length);
+                    let alloc = {
+                        let size = length.next_multiple_of(4096);
+                        let new_bottom = self.mmap_bottom.saturating_sub(size);
+                        if new_bottom < 0xf1000000 {
+                            None
+                        } else {
+                            self.mmap_bottom = new_bottom;
+                            Some(new_bottom)
+                        }
+                    };
                     match alloc {
                         Some(addr) => addr,
                         None => -12i32 as u32 // ENOMEM
@@ -242,7 +278,7 @@ impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
                 ctx.write_x(Register::A0, res);
             }
             whence => {
-                println!("\nstack: {:X?}\n{:06X}: ECALL {whence} ({:X})", self.stack, ctx.pc-4, ctx.read_x(Register::A0));
+                println!("\n{:06X}: ECALL {whence} ({:X})", ctx.pc-4, ctx.read_x(Register::A0));
                 ctx.write_x(Register::A0, u32::MAX); // no errno LOL
             }
         }
