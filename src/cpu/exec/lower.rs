@@ -174,7 +174,8 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             let src = cpu.read_x(src);
 
             let ImmShift(ShiftLeft, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
-            let v = src.unbounded_shl(u8::from(n).into());
+            // SAFETY: U5 max is 31
+            let v = unsafe { src.unchecked_shl(u8::from(n).into()) };
 
             unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { next!(cpu, h, stream) }
@@ -190,7 +191,8 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             let src = cpu.read_x(src);
 
             let ImmShift(ShiftRightLogical, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
-            let v = src.unbounded_shr(u8::from(n).into());
+            // safety: U5 max is 31
+            let v = unsafe { src.unchecked_shr(u8::from(n).into()) };
 
             unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { next!(cpu, h, stream) }
@@ -206,7 +208,8 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             let src = cpu.read_x(src);
 
             let ImmShift(ShiftRightArithmetic, n) = funct else { unsafe { std::hint::unreachable_unchecked() } };
-            let v = (src as i32).unbounded_shr(u8::from(n).into()) as u32;
+            // safety: U5 max is 31
+            let v = unsafe { (src as i32).unchecked_shr(u8::from(n).into()) as u32 };
 
             unsafe { cpu.write_x_unchecked(dest, v) };
             unsafe { next!(cpu, h, stream) }
