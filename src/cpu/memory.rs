@@ -13,7 +13,7 @@ struct TlbEntry {
 }
 
 pub struct Memory {
-    tlb: Box<[Option<TlbEntry>]> // 0x10000
+    tlb: Box<[Option<TlbEntry>]>
 }
 
 impl Debug for Memory {
@@ -27,9 +27,14 @@ fn zeroed_buffer(len: usize) -> Rc<UnsafeCell<[u8]>> {
     unsafe { Rc::from_raw(Rc::into_raw(buf) as *const UnsafeCell<[u8]>) }
 }
 
+pub const PAGE_BITS: u32 = 12;
+pub const PAGE_SIZE: u32 = 1 << PAGE_BITS;
+pub const PAGE_MASK: u32 = PAGE_SIZE - 1;
+pub const TLB_SIZE: usize = 1 << (32 - PAGE_BITS);
+
 impl Memory {
     pub fn new() -> Self {
-        let mut tlb = Box::new_uninit_slice(0x100000);
+        let mut tlb = Box::new_uninit_slice(TLB_SIZE);
         tlb.fill_with(|| MaybeUninit::new(None));
         let tlb = unsafe { tlb.assume_init() };
         
@@ -40,7 +45,7 @@ impl Memory {
         this.mount(zeroed_buffer(0x10000000 - 0x10000), 0x10000).unwrap();
         this.mount(zeroed_buffer(0x10000000), 0xf0000000).unwrap();
 
-        let mut trap_buf = zeroed_buffer(0x1000);
+        let mut trap_buf = zeroed_buffer(PAGE_SIZE as usize);
         {
             let (chunks, []) = Rc::get_mut(&mut trap_buf).unwrap().get_mut().as_chunks_mut() else { unreachable!() };
             chunks.fill(TRAP);
@@ -51,26 +56,25 @@ impl Memory {
     }
 
     fn mount(&mut self, buf: Rc<UnsafeCell<[u8]>>, addr: u32) -> anyhow::Result<()> {
-        ensure!(buf.get().len() & 0xfff == 0);
-        ensure!(addr & 0xfff == 0);
-        let page1 = (addr >> 12) as usize;
-        let npages = buf.get().len() >> 12;
-        ensure!((npages + page1 as usize) <= 0x100000);
+        ensure!(buf.get().len() & PAGE_MASK as usize == 0);
+        ensure!(addr & PAGE_MASK == 0);
+        let page1 = (addr >> PAGE_BITS) as usize;
+        let npages = buf.get().len() >> PAGE_BITS;
 
         for (i, ent) in self.tlb[page1..page1+npages].iter_mut().enumerate() {
             ensure!(ent.is_none());
 
             *ent = Some(TlbEntry {
                 buf: buf.clone(),
-                offset: i * 0x1000
+                offset: i * PAGE_SIZE as usize
             });
         }
         Ok(())
     }
 
     fn translate(&self, addr: u32) -> Option<*mut u8> {
-        let off = (addr & 0xfff) as usize;
-        let page = (addr >> 12) as usize;
+        let off = (addr & PAGE_MASK) as usize;
+        let page = (addr >> PAGE_BITS) as usize;
         let entry = self.tlb[page].as_ref()?;
         Some(unsafe { (entry.buf.get() as *mut u8).add(entry.offset + off) })
     }
@@ -92,11 +96,11 @@ macro_rules! impl_load {
                         Ok($type::from_le_bytes(buf))
                     }
 
-                    if addr & 0xfff < (0x1000 - ::std::mem::size_of::<$type>() as u32 + 1) && let Some(pa) = self.translate(addr) {
+                    if addr & PAGE_MASK < (PAGE_SIZE - ::std::mem::size_of::<$type>() as u32 + 1) && let Some(pa) = self.translate(addr) {
                         return Ok(unsafe { (pa as *const $type).read_unaligned() })
                     }
 
-                    become [<load_ $type _slow>](&self, addr)
+                    become [<load_ $type _slow>](self, addr)
                 }
             )+
         }
@@ -119,7 +123,7 @@ macro_rules! impl_store {
                         Ok(())
                     }
 
-                    if addr & 0xfff < (0x1000 - std::mem::size_of::<$type>() as u32 + 1) && let Some(pa) = self.translate(addr) {
+                    if addr & PAGE_MASK < (PAGE_SIZE - std::mem::size_of::<$type>() as u32 + 1) && let Some(pa) = self.translate(addr) {
                         unsafe { (pa as *mut $type).write_unaligned(value) }
                         return Ok(())
                     }
@@ -157,7 +161,7 @@ impl Memory {
             return Ok(unsafe { pa.read_unaligned() })
         }
 
-        become load_u8_slow(&self, addr)
+        become load_u8_slow(self, addr)
     }
 
     #[inline(always)]
@@ -172,7 +176,7 @@ impl Memory {
             return Ok(unsafe { (pa as *const i8).read() })
         }
 
-        become load_i8_slow(&self, addr)
+        become load_i8_slow(self, addr)
     }
 
     #[inline(always)]

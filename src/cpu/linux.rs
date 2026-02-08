@@ -4,7 +4,7 @@ use anyhow::{Context as _, anyhow, bail, ensure};
 use object::{Architecture, LittleEndian, Object as _, ObjectSection, ObjectSymbol as _, elf::SHF_ALLOC, read::elf::ElfFile32};
 use stable_vec::ExternStableVec;
 
-use crate::{fs::FILES, instr::Register};
+use crate::{cpu::memory::PAGE_SIZE, fs::FILES, instr::Register};
 
 #[derive(Debug)]
 struct FileDescriptor {
@@ -67,7 +67,7 @@ impl<'data> LinuxHypervisor<'data> {
         ctx.store_u32(libc.checked_add(8).context("bad __libc")?, auxv_addr)?;
 
         // page_size
-        ctx.store_u32(libc.checked_add(0x1c).context("bad __libc")?, 4096)?;
+        ctx.store_u32(libc.checked_add(0x1c).context("bad __libc")?, PAGE_SIZE)?;
 
         let tp = self.kmalloc(TCB_SIZE).context("couldn't allocate tcb")? + TCB_SIZE;
         ctx.write_x(Register::TP, tp);
@@ -184,7 +184,7 @@ impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
                     -12i32 as u32 // ENOMEM
                 } else {
                     let alloc = {
-                        let size = length.next_multiple_of(4096);
+                        let size = length.next_multiple_of(PAGE_SIZE);
                         let new_bottom = self.mmap_bottom.saturating_sub(size);
                         if new_bottom < 0xf1000000 {
                             None
