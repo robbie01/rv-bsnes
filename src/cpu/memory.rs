@@ -27,7 +27,7 @@ fn zeroed_buffer(len: usize) -> Rc<UnsafeCell<[u8]>> {
     unsafe { Rc::from_raw(Rc::into_raw(buf) as *const UnsafeCell<[u8]>) }
 }
 
-pub const PAGE_BITS: u32 = 12;
+pub const PAGE_BITS: u32 = 16;
 pub const PAGE_SIZE: u32 = 1 << PAGE_BITS;
 pub const PAGE_MASK: u32 = PAGE_SIZE - 1;
 pub const TLB_SIZE: usize = 1 << (32 - PAGE_BITS);
@@ -75,7 +75,8 @@ impl Memory {
     fn translate(&self, addr: u32) -> Option<*mut u8> {
         let off = (addr & PAGE_MASK) as usize;
         let page = (addr >> PAGE_BITS) as usize;
-        let entry = self.tlb[page].as_ref()?;
+        debug_assert!(page < self.tlb.len());
+        let entry = unsafe { self.tlb.get_unchecked(page).as_ref()? };
         Some(unsafe { (entry.buf.get() as *mut u8).add(entry.offset + off) })
     }
 }
