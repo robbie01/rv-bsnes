@@ -38,15 +38,17 @@ impl<H: Hypervisor + ?Sized> Cpu<H> {
             bail!("tried to execute at address 0 (missing callback?)\nra = {:06X}", self.read_x(Register::RA));
         }
 
-        let block = if let Some((pc, ref block)) = self.hot_cache[(self.pc >> 2) as usize & (HOT_SIZE - 1)] && pc == self.pc {
+        let hot_key = (self.pc >> 2) as usize & (HOT_SIZE - 1);
+
+        let block = if let Some((pc, ref block)) = self.hot_cache[hot_key] && pc == self.pc {
             block.clone()
         } else if let Some(block) = self.block_cache.get(&self.pc) {
-            self.hot_cache[(self.pc >> 2) as usize & (HOT_SIZE - 1)] = Some((self.pc, block.clone()));
+            self.hot_cache[hot_key] = Some((self.pc, block.clone()));
             block.clone()
         } else {
             let block = self.decode_block(self.pc)?;
             self.block_cache.insert(self.pc, block.clone());
-            self.hot_cache[(self.pc >> 2) as usize & (HOT_SIZE - 1)] = Some((self.pc, block.clone()));
+            self.hot_cache[hot_key] = Some((self.pc, block.clone()));
             block
         };
         
