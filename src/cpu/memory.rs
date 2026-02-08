@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, convert::Infallible, fmt::Debug, mem::MaybeUninit, rc::Rc};
+use std::{cell::UnsafeCell, fmt::Debug, mem::MaybeUninit, rc::Rc};
 
 use anyhow::{bail, ensure};
 
@@ -137,16 +137,6 @@ macro_rules! impl_store {
 }
 
 impl Memory {
-    #[cold]
-    #[inline(never)]
-    fn oob<const STORE: bool>(&self, addr: u32) -> anyhow::Result<Infallible> {
-        if STORE {
-            bail!("oob store @ {addr:06X}")
-        } else {
-            bail!("oob load @ {addr:06X}")
-        }
-    }
-
     impl_load! { u32, u16, i16, f64, f32 }
     impl_store! { u32, u16, f64, f32 }
 
@@ -154,8 +144,8 @@ impl Memory {
     pub fn load_u8(&self, addr: u32) -> anyhow::Result<u8> {
         #[cold]
         #[inline(never)]
-        fn load_u8_slow(this: &Memory, addr: u32) -> anyhow::Result<u8> {
-            this.oob::<false>(addr).map(|v| match v {})
+        fn load_u8_slow(_this: &Memory, addr: u32) -> anyhow::Result<u8> {
+            bail!("oob load @ {addr:06X}")
         }
 
         if let Some(pa) = self.translate(addr) {
@@ -169,8 +159,8 @@ impl Memory {
     pub fn load_i8(&self, addr: u32) -> anyhow::Result<i8> {
         #[cold]
         #[inline(never)]
-        fn load_i8_slow(this: &Memory, addr: u32) -> anyhow::Result<i8> {
-            this.oob::<false>(addr).map(|v| match v {})
+        fn load_i8_slow(_this: &Memory, addr: u32) -> anyhow::Result<i8> {
+            bail!("oob load @ {addr:06X}")
         }
 
         if let Some(pa) = self.translate(addr) {
@@ -184,8 +174,8 @@ impl Memory {
     pub fn store_u8(&mut self, addr: u32, value: u8) -> anyhow::Result<()> {
         #[cold]
         #[inline(never)]
-        fn store_u8_slow(this: &mut Memory, addr: u32, _value: u8) -> anyhow::Result<()> {
-            this.oob::<true>(addr).map(|v| match v {})
+        fn store_u8_slow(_this: &mut Memory, addr: u32, _value: u8) -> anyhow::Result<()> {
+            bail!("oob store @ {addr:06X}")
         }
 
         if let Some(pa) = self.translate(addr) {
