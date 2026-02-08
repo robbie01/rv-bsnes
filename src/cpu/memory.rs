@@ -1,24 +1,19 @@
-use std::{convert::Infallible, fmt::Debug, ops::{Index, IndexMut, Range}};
+use std::{cell::UnsafeCell, convert::Infallible, fmt::Debug, mem::MaybeUninit, rc::Rc};
 
-use anyhow::bail;
-
-fn zeroed_array<const N: usize>() -> Box<[u8; N]> {
-    unsafe { Box::new_zeroed().assume_init() }
-}
-
-fn zeroed_slice(n: usize) -> Box<[u8]> {
-    unsafe { Box::new_zeroed_slice(n).assume_init() }
-}
+use anyhow::{bail, ensure};
 
 const TRAP: [u8; 4] = [
     0x02, 0x90, // c.ebreak
     0x82, 0x80  // c.ret
 ];
 
-#[derive(Clone)]
+struct TlbEntry {
+    buf: Rc<UnsafeCell<[u8]>>,
+    offset: usize
+}
+
 pub struct Memory {
-    program: Box<[u8]>, // starts at 0
-    fun_area: Box<[u8; 256*1024*1024]> // 0xf0000000-END
+    tlb: Box<[Option<TlbEntry>]> // 0x10000
 }
 
 impl Debug for Memory {
@@ -27,81 +22,113 @@ impl Debug for Memory {
     }
 }
 
-fn shift_range(r: &Range<u32>, off: u32) -> Option<Range<u32>> {
-    Some(r.start.checked_sub(off)?..r.end.checked_sub(off)?)
+fn zeroed_buffer(len: usize) -> Rc<UnsafeCell<[u8]>> {
+    let buf = Rc::<[u8]>::new_uninit_slice(len);
+    unsafe { Rc::from_raw(Rc::into_raw(buf) as *const UnsafeCell<[u8]>) }
 }
 
 impl Memory {
-    pub fn new(program_size: usize) -> Self {
-        Self {
-            program: zeroed_slice(program_size),
-            fun_area: zeroed_array(),
+    pub fn new() -> Self {
+        let mut tlb = Box::new_uninit_slice(0x100000);
+        tlb.fill_with(|| MaybeUninit::new(None));
+        let tlb = unsafe { tlb.assume_init() };
+        
+        let mut this = Self {
+            tlb
+        };
+
+        this.mount(zeroed_buffer(0x10000000 - 0x10000), 0x10000).unwrap();
+        this.mount(zeroed_buffer(0x10000000), 0xf0000000).unwrap();
+
+        let mut trap_buf = zeroed_buffer(0x1000);
+        {
+            let (chunks, []) = Rc::get_mut(&mut trap_buf).unwrap().get_mut().as_chunks_mut() else { unreachable!() };
+            chunks.fill(TRAP);
         }
+        this.mount(trap_buf, 0xe0000000).unwrap();
+
+        this
     }
 
-    fn get(&self, range: Range<u32>) -> Option<&[u8]> {
-        if range.start < 0x10000 {
-            None
-        } else if let Some(o) = shift_range(&range, 0xf0000000) && o.end <= 0xfffffff {
-            Some(&self.fun_area[o.start.try_into().ok()?..o.end.try_into().ok()?])
-        } else if usize::try_from(range.end).ok()? < self.program.len() {
-            Some(&self.program[range.start.try_into().ok()?..range.end.try_into().ok()?])
-        } else if range.start >= 0xe0000000 && range.end < 0xf0000000 {
-            // Callback
-            let maxlen = 4 - (range.start % 4);
-            if range.end - range.start > maxlen {
-                return None
-            }
-            let len = range.end - range.start;
-            let begin = (range.start % 4) as usize;
-            Some(&TRAP[begin..begin + len as usize])
-        } else {
-            None
+    fn mount(&mut self, buf: Rc<UnsafeCell<[u8]>>, addr: u32) -> anyhow::Result<()> {
+        ensure!(buf.get().len() & 0xfff == 0);
+        ensure!(addr & 0xfff == 0);
+        let page1 = (addr >> 12) as usize;
+        let npages = buf.get().len() >> 12;
+        ensure!((npages + page1 as usize) <= 0x100000);
+
+        for (i, ent) in self.tlb[page1..page1+npages].iter_mut().enumerate() {
+            ensure!(ent.is_none());
+
+            *ent = Some(TlbEntry {
+                buf: buf.clone(),
+                offset: i * 0x1000
+            });
         }
+        Ok(())
     }
 
-    /// Intentionally absent:
-    /// - trap range (0xe0000000-0xefffffff)
-    /// - zero range (0xfffffff1-0xffffffff)
-    fn get_mut(&mut self, range: Range<u32>) -> Option<&mut [u8]> {
-        if range.start < 0x10000 {
-            None
-        } else if let Some(o) = shift_range(&range, 0xf0000000) && o.end <= 0xffffff0 {
-            Some(&mut self.fun_area[o.start.try_into().ok()?..o.end.try_into().ok()?])
-        } else if usize::try_from(range.end).ok()? < self.program.len() {
-            Some(&mut self.program[range.start.try_into().ok()?..range.end.try_into().ok()?])
-        } else {
-            None
+    fn translate(&self, addr: u32) -> Option<*mut u8> {
+        let off = (addr & 0xfff) as usize;
+        let page = (addr >> 12) as usize;
+        let entry = self.tlb[page].as_ref()?;
+        Some(unsafe { (entry.buf.get() as *mut u8).add(entry.offset + off) })
+    }
+}
+
+macro_rules! impl_load {
+    ($($type:ty),+) => {
+        ::paste::paste! {
+            $(
+                #[inline(always)]
+                pub fn [<load_ $type>](&self, addr: u32) -> anyhow::Result<$type> {
+                    #[cold]
+                    #[inline(never)]
+                    fn [<load_ $type _slow>](this: &Memory, addr: u32) -> anyhow::Result<$type> {
+                        let mut buf = [0; ::std::mem::size_of::<$type>()];
+                        for (i, v) in (addr..).zip(&mut buf) {
+                            *v = this.load_u8(i)?;
+                        }
+                        Ok($type::from_le_bytes(buf))
+                    }
+
+                    if addr & 0xfff < (0x1000 - ::std::mem::size_of::<$type>() as u32 + 1) && let Some(pa) = self.translate(addr) {
+                        return Ok(unsafe { (pa as *const $type).read_unaligned() })
+                    }
+
+                    become [<load_ $type _slow>](&self, addr)
+                }
+            )+
         }
-    }
+    };
 }
 
-impl Index<u32> for Memory {
-    type Output = u8;
+macro_rules! impl_store {
+    ($($type:ty),+) => {
+        ::paste::paste! {
+            $(
+                #[inline(always)]
+                pub fn [<store_ $type>](&mut self, addr: u32, value: $type) -> anyhow::Result<()> {
+                    #[cold]
+                    #[inline(never)]
+                    fn [<store_ $type _slow>](this: &mut Memory, addr: u32, value: $type) -> anyhow::Result<()> {
+                        for (i, v) in (addr..).zip(value.to_le_bytes()) {
+                            this.store_u8(i, v)?
+                        }
 
-    fn index(&self, index: u32) -> &Self::Output {
-        &self[index..index+1][0]
-    }
-}
+                        Ok(())
+                    }
 
-impl IndexMut<u32> for Memory {
-    fn index_mut(&mut self, index: u32) -> &mut Self::Output {
-        &mut self[index..index+1][0]
-    }
-}
+                    if addr & 0xfff < (0x1000 - std::mem::size_of::<$type>() as u32 + 1) && let Some(pa) = self.translate(addr) {
+                        unsafe { (pa as *mut $type).write_unaligned(value) }
+                        return Ok(())
+                    }
 
-impl Index<Range<u32>> for Memory {
-    type Output = [u8];
-
-    fn index(&self, index: Range<u32>) -> &Self::Output {
-        self.get(index).unwrap()
-    }
-}
-
-impl IndexMut<Range<u32>> for Memory {
-    fn index_mut(&mut self, index: Range<u32>) -> &mut Self::Output {
-        self.get_mut(index).unwrap()
-    }
+                    become [<store_ $type _slow>](self, addr, value)
+                }
+            )+
+        }
+    };
 }
 
 impl Memory {
@@ -115,83 +142,52 @@ impl Memory {
         }
     }
 
-    #[inline(always)]
-    pub fn load_u32(&self, addr: u32) -> anyhow::Result<u32> {
-        let Some(mem) = self.get(addr..addr+4) else { return self.oob::<false>(addr).map(|v| match v {}) };
-        Ok(u32::from_le_bytes(mem.try_into()?))
-    }
-
-    #[inline(always)]
-    pub fn load_u16(&self, addr: u32) -> anyhow::Result<u16> {
-        let Some(mem) = self.get(addr..addr+2) else { return self.oob::<false>(addr).map(|v| match v {}) };
-        Ok(u16::from_le_bytes(mem.try_into()?))
-    }
-
-    #[inline(always)]
-    pub fn load_i16(&self, addr: u32) -> anyhow::Result<i16> {
-        self.load_u16(addr).map(|v| v as i16)
-    }
+    impl_load! { u32, u16, i16, f64, f32 }
+    impl_store! { u32, u16, f64, f32 }
 
     #[inline(always)]
     pub fn load_u8(&self, addr: u32) -> anyhow::Result<u8> {
-        let Some(mem) = self.get(addr..addr+1) else { return self.oob::<false>(addr).map(|v| match v {}) };
-        Ok(mem[0])
+        #[cold]
+        #[inline(never)]
+        fn load_u8_slow(this: &Memory, addr: u32) -> anyhow::Result<u8> {
+            this.oob::<false>(addr).map(|v| match v {})
+        }
+
+        if let Some(pa) = self.translate(addr) {
+            return Ok(unsafe { pa.read_unaligned() })
+        }
+
+        become load_u8_slow(&self, addr)
     }
 
     #[inline(always)]
     pub fn load_i8(&self, addr: u32) -> anyhow::Result<i8> {
-        self.load_u8(addr).map(|v| v as i8)
-    }
+        #[cold]
+        #[inline(never)]
+        fn load_i8_slow(this: &Memory, addr: u32) -> anyhow::Result<i8> {
+            this.oob::<false>(addr).map(|v| match v {})
+        }
 
-    #[inline(always)]
-    pub fn load_f32(&self, addr: u32) -> anyhow::Result<f32> {
-        let Some(mem) = self.get(addr..addr+4) else { return self.oob::<false>(addr).map(|v| match v {}) };
-        Ok(f32::from_le_bytes(mem.try_into()?))
-    }
+        if let Some(pa) = self.translate(addr) {
+            return Ok(unsafe { (pa as *const i8).read() })
+        }
 
-    #[inline(always)]
-    pub fn load_f64(&self, addr: u32) -> anyhow::Result<f64> {
-        let Some(mem) = self.get(addr..addr+8) else { return self.oob::<false>(addr).map(|v| match v {}) };
-        Ok(f64::from_le_bytes(mem.try_into()?))
-    }
-
-    #[inline(always)]
-    pub fn store_u32(&mut self, addr: u32, value: u32) -> anyhow::Result<()> {
-        let Some(mem) = self.get_mut(addr..addr+4) else { return self.oob::<true>(addr).map(|v| match v {}) };
-        mem.copy_from_slice(&value.to_le_bytes());
-
-        Ok(())
-    }
-
-    #[inline(always)]
-    pub fn store_u16(&mut self, addr: u32, value: u16) -> anyhow::Result<()> {
-        let Some(mem) = self.get_mut(addr..addr+2) else { return self.oob::<true>(addr).map(|v| match v {}) };
-        mem.copy_from_slice(&value.to_le_bytes());
-
-        Ok(())
+        become load_i8_slow(&self, addr)
     }
 
     #[inline(always)]
     pub fn store_u8(&mut self, addr: u32, value: u8) -> anyhow::Result<()> {
-        let Some(mem) = self.get_mut(addr..addr+1) else { return self.oob::<true>(addr).map(|v| match v {}) };
-        mem.copy_from_slice(&[value]);
+        #[cold]
+        #[inline(never)]
+        fn store_u8_slow(this: &mut Memory, addr: u32, _value: u8) -> anyhow::Result<()> {
+            this.oob::<true>(addr).map(|v| match v {})
+        }
 
-        Ok(())
-    }
+        if let Some(pa) = self.translate(addr) {
+            unsafe { pa.write_unaligned(value) }
+            return Ok(())
+        }
 
-    #[inline(always)]
-    pub fn store_f32(&mut self, addr: u32, value: f32) -> anyhow::Result<()> {
-        let Some(mem) = self.get_mut(addr..addr+4) else { return self.oob::<true>(addr).map(|v| match v {}) };
-        mem.copy_from_slice(&value.to_le_bytes());
-
-        Ok(())
-    }
-
-    #[inline(always)]
-    pub fn store_f64(&mut self, addr: u32, value: f64) -> anyhow::Result<()> {
-        let Some(mem) = self.get_mut(addr..addr+8) else { return self.oob::<true>(addr).map(|v| match v {}) };
-        mem.copy_from_slice(&value.to_le_bytes());
-
-        Ok(())
+        become store_u8_slow(self, addr, value)
     }
 }

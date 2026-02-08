@@ -73,7 +73,7 @@ pub trait LoadableHypervisor<'data>: Hypervisor {
 
 const HOT_SIZE: usize = 1 << 14;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Cpu<H: ?Sized> {
     pc: u32,
     pub x: [u32; 32],
@@ -91,7 +91,7 @@ impl<H: ?Sized> Cpu<H> {
             pc: u32::MAX,
             x: [0; 32],
             f: [FRegister::write_f64(0.); 32],
-            memory: Memory::new(0x10000000),
+            memory: Memory::new(),
 
             hot_cache: [const { None }; _],
             block_cache: FnvHashMap::default(),
