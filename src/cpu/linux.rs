@@ -60,7 +60,7 @@ impl<'data> LinuxHypervisor<'data> {
     }
 
     // __init_libc
-    fn init_libc(&mut self, ctx: &mut super::Cpu<Self>) -> anyhow::Result<()> {
+    fn init_libc(&mut self, ctx: &mut super::Cpu<'_, Self>) -> anyhow::Result<()> {
         let libc: u32 = self.image.as_ref().unwrap().symbol_by_name("__libc").context("no __libc")?.address().try_into()?;
 
         let auxv_addr = self.kmalloc(8).context("couldn't alloc auxv")?;
@@ -82,7 +82,7 @@ impl<'data> LinuxHypervisor<'data> {
 impl<'data> super::LoadableHypervisor<'data> for LinuxHypervisor<'data> {
     type Object = ElfFile32<'data, LittleEndian>;
 
-    fn load<'this>(&'this mut self, ctx: &mut super::Cpu<Self>, obj: &'data ElfFile32<'data, LittleEndian>) -> anyhow::Result<()> where 'data: 'this {
+    fn load<'this>(&'this mut self, ctx: &mut super::Cpu<'_, Self>, obj: &'data ElfFile32<'data, LittleEndian>) -> anyhow::Result<()> where 'data: 'this {
         ensure!(self.image.is_none());
         ensure!(obj.architecture() == Architecture::Riscv32);
 
@@ -121,7 +121,7 @@ impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
     }
 
     #[inline(always)]
-    fn before_block(&mut self, ctx: &mut super::Cpu<Self>) -> anyhow::Result<()> {
+    fn before_block(&mut self, ctx: &mut super::Cpu<'_, Self>) -> anyhow::Result<()> {
         #[allow(clippy::overly_complex_bool_expr)]
         if false && ERROR_ROUTINES.contains(&ctx.pc) {
             bail!("error routine reached");
@@ -131,12 +131,12 @@ impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
     }
 
     #[inline(always)]
-    fn after_block(&mut self, _ctx: &mut super::Cpu<Self>) -> anyhow::Result<()> {
+    fn after_block(&mut self, _ctx: &mut super::Cpu<'_, Self>) -> anyhow::Result<()> {
         Ok(())
     }
 
     #[inline(never)]
-    fn ebreak(&mut self, ctx: &mut super::Cpu<Self>) -> anyhow::Result<()> {
+    fn ebreak(&mut self, ctx: &mut super::Cpu<'_, Self>) -> anyhow::Result<()> {
         match ctx.pc {
             0xe0000002 => { // jg_cb_log
                 let addr = ctx.read_x(Register::A1);
@@ -160,7 +160,7 @@ impl<'data> super::Hypervisor for LinuxHypervisor<'data> {
     }
 
     #[inline(never)]
-    fn ecall(&mut self, ctx: &mut super::Cpu<Self>) -> anyhow::Result<()> {
+    fn ecall(&mut self, ctx: &mut super::Cpu<'_, Self>) -> anyhow::Result<()> {
         match ctx.read_x(Register::A7) {
             214 => { // brk
                 let req = ctx.read_x(Register::A0);

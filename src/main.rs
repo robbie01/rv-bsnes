@@ -7,6 +7,7 @@
 use std::time::Instant;
 
 use anyhow::Context;
+use bumpalo::Bump;
 use include_bytes_aligned::include_bytes_aligned;
 use object::{LittleEndian, Object, ObjectSymbol, read::elf::ElfFile32};
 
@@ -18,10 +19,11 @@ mod fs;
 
 fn main() -> anyhow::Result<()> {
     let game = include_bytes!("../lttp.sfc");
+    let arena = Bump::new();
 
     let program = ElfFile32::<LittleEndian>::parse(&include_bytes_aligned!(16, "../bsnes.elf")[..])?;
     let mut h = LinuxHypervisor::default();
-    let mut cpu = Cpu::new();
+    let mut cpu = Cpu::new(&arena);
     cpu.load(&mut h, &program)?;
 
     let init_array_start: u32 = program.symbol_by_name("__init_array_start").context("no __init_array_start")?.address().try_into()?;

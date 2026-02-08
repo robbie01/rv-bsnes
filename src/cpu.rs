@@ -2,9 +2,10 @@ mod exec;
 mod memory;
 pub mod linux;
 
-use std::{fmt::Debug, rc::Rc};
+use std::fmt::Debug;
 
 use anyhow::ensure;
+use bumpalo::Bump;
 use fnv::FnvHashMap;
 
 use crate::instr::Register;
@@ -56,38 +57,42 @@ impl Debug for FRegister {
 }
 
 pub trait Hypervisor {
-    fn before_block(&mut self, ctx: &mut Cpu<Self>) -> anyhow::Result<()>;
-    fn after_block(&mut self, ctx: &mut Cpu<Self>) -> anyhow::Result<()>;
+    fn before_block(&mut self, ctx: &mut Cpu<'_, Self>) -> anyhow::Result<()>;
+    fn after_block(&mut self, ctx: &mut Cpu<'_, Self>) -> anyhow::Result<()>;
 
     fn symbol(&self, sym: &str) -> anyhow::Result<u32>;
 
-    fn ebreak(&mut self, ctx: &mut Cpu<Self>) -> anyhow::Result<()>;
-    fn ecall(&mut self, ctx: &mut Cpu<Self>) -> anyhow::Result<()>;
+    fn ebreak(&mut self, ctx: &mut Cpu<'_, Self>) -> anyhow::Result<()>;
+    fn ecall(&mut self, ctx: &mut Cpu<'_, Self>) -> anyhow::Result<()>;
 }
 
 pub trait LoadableHypervisor<'data>: Hypervisor {
     type Object: 'data;
 
-    fn load<'this>(&'this mut self, ctx: &mut Cpu<Self>, obj: &'data Self::Object) -> anyhow::Result<()> where 'data: 'this;
+    fn load<'this>(&'this mut self, ctx: &mut Cpu<'_, Self>, obj: &'data Self::Object) -> anyhow::Result<()> where 'data: 'this;
 }
 
 const HOT_SIZE: usize = 1 << 14;
 
 #[derive(Debug)]
-pub struct Cpu<H: ?Sized> {
+pub struct Cpu<'arena, H: ?Sized> {
+    arena: &'arena Bump,
+
     pc: u32,
     pub x: [u32; 32],
     pub f: [FRegister; 32],
     pub memory: Memory,
 
-    pub hot_cache: [Option<(u32, Rc<exec::Block<H>>)>; HOT_SIZE],
-    pub block_cache: FnvHashMap<u32, Rc<exec::Block<H>>>,
+    pub hot_cache: [Option<(u32, &'arena exec::Block<H>)>; HOT_SIZE],
+    pub block_cache: FnvHashMap<u32, &'arena exec::Block<H>>,
     block_scratch: Vec<exec::Op<H>>
 }
 
-impl<H: ?Sized> Cpu<H> {
-    pub fn new() -> Self {
+impl<'arena, H: ?Sized> Cpu<'arena, H> {
+    pub fn new(arena: &'arena Bump) -> Self {
         let mut this = Self {
+            arena,
+
             pc: u32::MAX,
             x: [0; 32],
             f: [FRegister::write_f64(0.); 32],
@@ -139,7 +144,7 @@ impl<H: ?Sized> Cpu<H> {
 }
 
 // Load/store helpers
-impl<H: ?Sized> Cpu<H> {
+impl<'arena, H: ?Sized> Cpu<'arena, H> {
     #[inline(always)]
     pub fn load_u32(&self, addr: u32) -> anyhow::Result<u32> {
         self.memory.load_u32(addr)

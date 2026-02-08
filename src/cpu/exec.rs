@@ -8,9 +8,9 @@ use super::*;
 
 pub use lower::{Block, Op};
 
-impl<H: Hypervisor + ?Sized> Cpu<H> {
+impl<'arena, H: Hypervisor + ?Sized> Cpu<'arena, H> {
     #[inline(always)]
-    fn decode_block(&mut self, mut pc: u32) -> anyhow::Result<Rc<Block<H>>> {
+    fn decode_block(&mut self, mut pc: u32) -> anyhow::Result<&'arena Block<H>> {
         self.block_scratch.clear();
 
         loop {
@@ -30,7 +30,7 @@ impl<H: Hypervisor + ?Sized> Cpu<H> {
             }
         }
 
-        Ok(Block::new(self.block_scratch.iter().copied()))
+        Ok(Block::new(self.arena, &self.block_scratch))
     }
 
     fn continue_execution(&mut self, h: &mut H) -> anyhow::Result<()> {
@@ -41,14 +41,14 @@ impl<H: Hypervisor + ?Sized> Cpu<H> {
         let hot_key = (self.pc >> 2) as usize & (HOT_SIZE - 1);
 
         let block = if let Some((pc, ref block)) = self.hot_cache[hot_key] && pc == self.pc {
-            block.clone()
+            block
         } else if let Some(block) = self.block_cache.get(&self.pc) {
-            self.hot_cache[hot_key] = Some((self.pc, block.clone()));
-            block.clone()
+            self.hot_cache[hot_key] = Some((self.pc, block));
+            block
         } else {
             let block = self.decode_block(self.pc)?;
-            self.block_cache.insert(self.pc, block.clone());
-            self.hot_cache[hot_key] = Some((self.pc, block.clone()));
+            self.block_cache.insert(self.pc, block);
+            self.hot_cache[hot_key] = Some((self.pc, block));
             block
         };
         
