@@ -128,7 +128,8 @@ fn main() -> anyhow::Result<()> {
     }
 
     println!("avg s per frame: {}", frametime / nframes as f64);
-    println!("hot cache usage: {}", cpu.hot_cache.iter().filter(|v| v.is_none()).count());
+    println!("blocks encountered: {}", cpu.block_cache.len());
+    println!("hot cache usage: {}", cpu.hot_cache.iter().filter(|v| v.is_some()).count());
     // for item in cpu.hot_cache.into_iter().rev() {
     //     if let Some((pc, block)) = item {
     //         println!("{pc:X}, {block:?}");
