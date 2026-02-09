@@ -2,7 +2,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context as _, anyhow, bail, ensure};
 use object::{Architecture, LittleEndian, Object as _, ObjectSection, ObjectSymbol as _, elf::SHF_ALLOC, read::elf::ElfFile32};
-use stable_vec::ExternStableVec;
+use stable_vec::StableVec;
 
 use crate::{cpu::memory::PAGE_SIZE, fs::FILES, instr::Register};
 
@@ -15,7 +15,7 @@ struct FileDescriptor {
 #[derive(Debug)]
 pub struct LinuxHypervisor<'data> {
     image: Option<&'data ElfFile32<'data, LittleEndian>>,
-    fds: ExternStableVec<FileDescriptor>,
+    fds: StableVec<FileDescriptor>,
 
     bss: u32,
     brk: u32,
@@ -28,7 +28,7 @@ impl<'data> Default for LinuxHypervisor<'data> {
     fn default() -> Self {
         Self {
             image: None,
-            fds: ExternStableVec::new(),
+            fds: StableVec::new(),
             bss: 0,
             brk: 0,
 

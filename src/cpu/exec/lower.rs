@@ -785,7 +785,7 @@ pub struct Block<H: ?Sized>([Op<H>]);
 impl<H: ?Sized> Block<H> {
     pub fn new<'arena>(arena: &'arena Bump, ops: &[Op<H>]) -> &'arena Self {
         let n = ops.len();
-        
+
         let stream = arena.alloc_slice_fill_copy(n + 1, MaybeUninit::uninit());
         stream[..n].write_copy_of_slice(ops);
         stream[n].write(Op {
@@ -799,5 +799,10 @@ impl<H: ?Sized> Block<H> {
     pub fn execute(&self, cpu: &mut Cpu<'_, H>, h: &mut H) -> anyhow::Result<()> where H: Hypervisor {
         let Op { op_fn, instr } = *unsafe { self.0.get_unchecked(0) };
         unsafe { op_fn(cpu, h, self.0.as_ptr(), instr) }
+    }
+
+    #[allow(unused)]
+    pub fn len(&self) -> usize {
+        self.0.len() - 1
     }
 }
