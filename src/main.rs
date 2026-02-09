@@ -105,13 +105,15 @@ fn main() -> anyhow::Result<()> {
 
     let nframes = 200;
     let mut frametime = 0.;
+    let mut n_instr = 0;
 
     for i in 0..nframes {
         eprintln!("calling jg_exec_frame ({i})...");
         let t1 = Instant::now();
-        cpu.call_subroutine_by_name(&mut h, "jg_exec_frame")?;
+        let instrs = cpu.call_subroutine_by_name(&mut h, "jg_exec_frame")?;
         let t = Instant::now() - t1;
         frametime += t.as_secs_f64();
+        n_instr += instrs;
 
         // if i >= 300 {
         //     let _w = cpu.load_u32(vidinfo_addr+0xc)?;
@@ -128,6 +130,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     println!("avg s per frame: {}", frametime / nframes as f64);
+    println!("instructions/s: {}", n_instr as f64 / frametime);
     println!("hot cache usage: {}", cpu.hot_cache.iter().filter(|v| v.is_none()).count());
     // for item in cpu.hot_cache.into_iter().rev() {
     //     if let Some((pc, block)) = item {
