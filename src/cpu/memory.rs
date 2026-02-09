@@ -23,7 +23,7 @@ impl Debug for Memory {
 }
 
 fn zeroed_buffer(len: usize) -> Rc<UnsafeCell<[u8]>> {
-    let buf = Rc::<[u8]>::new_uninit_slice(len);
+    let buf = Rc::<[u8]>::new_zeroed_slice(len);
     unsafe { Rc::from_raw(Rc::into_raw(buf) as *const UnsafeCell<[u8]>) }
 }
 
