@@ -70,14 +70,6 @@ pub fn emit_epilogue(instrs: &mut InstructionSink<'_>, indices: &BTreeMap<u32, u
                 .i32_const(i16::from(offset).into())
                 .i32_add();
 
-            let start_addr = *indices.first_key_value().unwrap().0;
-            instrs
-                .i32_const(-1)
-                .i32_eq()
-                .if_(BlockType::FunctionType(0))
-                .return_call(4)
-                .else_();
-
             match base {
                 Register::ZERO => instrs.i32_const(0),
                 r => instrs.local_get(u32::from(u8::from(r)) - 1)
@@ -85,7 +77,16 @@ pub fn emit_epilogue(instrs: &mut InstructionSink<'_>, indices: &BTreeMap<u32, u
 
             instrs
                 .i32_const(i16::from(offset).into())
-                .i32_add()
+                .i32_add();
+
+            let start_addr = *indices.first_key_value().unwrap().0;
+            instrs
+                .i32_const(0xe0000000u32 as i32)
+                .i32_ge_u()
+                .if_(BlockType::FunctionType(2))
+                .local_set(x(Register::A7))
+                .return_()
+                .else_()
                 .i32_const(start_addr as i32)
                 .i32_sub()
                 .i32_const(1)
@@ -362,7 +363,7 @@ pub fn emit_instruction(instrs: &mut InstructionSink<'_>, pc: u32, instr: I) {
                 System::Ebreak => instrs.call(0),
                 System::Ecall => instrs.call(1),
                 System::Csr(_csr) => {
-                    // eprintln!("warning: csrs are not implemented {_csr:?}");
+                    eprintln!("warning: csrs are not implemented @{pc:X} {_csr:?}");
                     instrs.unreachable()
                 }
             };

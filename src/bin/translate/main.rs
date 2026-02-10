@@ -35,6 +35,26 @@ const REGISTER_FILE: [ValType; 63] = [
     F64, F64, F64, F64,
 ];
 
+const REGISTER_FILE_INDIRECT_EPILOGUE: [ValType; 64] = [
+    I32, I32, I32,
+    I32, I32, I32, I32,
+    I32, I32, I32, I32,
+    I32, I32, I32, I32,
+    I32, I32, I32, I32,
+    I32, I32, I32, I32,
+    I32, I32, I32, I32,
+    I32, I32, I32, I32,
+    F64, F64, F64, F64,
+    F64, F64, F64, F64,
+    F64, F64, F64, F64,
+    F64, F64, F64, F64,
+    F64, F64, F64, F64,
+    F64, F64, F64, F64,
+    F64, F64, F64, F64,
+    F64, F64, F64, F64,
+    I32
+];
+
 fn main() -> anyhow::Result<()> {
     let program = fs::read("bsnes.elf")?;
     let image = ElfFile32::<LittleEndian>::parse(&program)?;
@@ -49,6 +69,8 @@ fn main() -> anyhow::Result<()> {
         type_section.ty().function(REGISTER_FILE, REGISTER_FILE);
         // 1: start function
         type_section.ty().function([], []);
+        // 2: basic block indirect epilogue
+        type_section.ty().function(REGISTER_FILE_INDIRECT_EPILOGUE, REGISTER_FILE);
         module.section(&type_section);
     }
 
@@ -102,26 +124,40 @@ fn main() -> anyhow::Result<()> {
     }
 
     {
+        let mut global_section = GlobalSection::new();
         let mut export_section = ExportSection::new();
         let mut seen = BTreeMap::new();
         for symbol in image.symbols() {
-            if symbol.kind() != SymbolKind::Text {
+            let name = symbol.name()?;
+            if name.is_empty() {
                 continue;
             }
 
-            if let Some(&index) = indices.get(&(symbol.address() as u32)) {
-                let name = symbol.name()?;
+            if symbol.kind() == SymbolKind::Text {
+                let index = indices[&(symbol.address() as u32)];
                 match seen.entry(name) {
                     Entry::Vacant(v) => {
                         v.insert(symbol.address());
-                        export_section.export(symbol.name()?, ExportKind::Func, index);
+                        export_section.export(name, ExportKind::Func, index);
                     },
                     Entry::Occupied(o) => {
                         eprintln!("warning: {name} already seen: old address {:X}, new {:X}", o.get(), symbol.address());
                     }
                 }
+            } else {
+                match seen.entry(name) {
+                    Entry::Vacant(v) => {
+                        v.insert(symbol.address());
+                        export_section.export(name, ExportKind::Global, global_section.len());
+                        global_section.global(GlobalType { val_type: I32, mutable: false, shared: false }, &ConstExpr::i32_const(u32::try_from(symbol.address())? as i32));
+                    },
+                    Entry::Occupied(o) => {
+                        eprintln!("warning: global {name} already seen: old address {:X}, new {:X}", o.get(), symbol.address());
+                    }
+                }
             }
         }
+        module.section(&global_section);
         module.section(&export_section);
     }
     
