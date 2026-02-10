@@ -2,10 +2,10 @@ mod decode;
 mod emit;
 use {decode::*, emit::*};
 
-use std::{collections::BTreeMap, fs};
+use std::{collections::{BTreeMap, btree_map::Entry}, fs};
 
 use anyhow::Context;
-use object::{LittleEndian, Object, read::elf::ElfFile32};
+use object::{LittleEndian, Object, ObjectSymbol, SymbolKind, read::elf::ElfFile32};
 use wasm_encoder::{ValType::{self, *}, *};
 
 // prologue
@@ -47,6 +47,8 @@ fn main() -> anyhow::Result<()> {
         let mut type_section = TypeSection::new();
         // 0: basic block
         type_section.ty().function(REGISTER_FILE, REGISTER_FILE);
+        // 1: start function
+        type_section.ty().function([], []);
         module.section(&type_section);
     }
 
@@ -60,13 +62,14 @@ fn main() -> anyhow::Result<()> {
 
     {
         let mut func_section = FunctionSection::new();
-        for _ in 0..blocks.len()+1 {
+        func_section.function(1);
+        for _ in 0..blocks.len()+2 {
             func_section.function(0);
         }
         module.section(&func_section);
     }
     
-    let indices = blocks.keys().enumerate().map(|(idx, &addr)| (addr, idx as u32 + n_imports + 1)).collect::<BTreeMap<_, _>>();
+    let indices = blocks.keys().enumerate().map(|(idx, &addr)| (addr, idx as u32 + n_imports + 3)).collect::<BTreeMap<_, _>>();
 
     let first_addr = *blocks.first_key_value().unwrap().0;
     assert_eq!(first_addr, 0x600000);
@@ -99,11 +102,39 @@ fn main() -> anyhow::Result<()> {
     }
 
     {
+        let mut export_section = ExportSection::new();
+        let mut seen = BTreeMap::new();
+        for symbol in image.symbols() {
+            if symbol.kind() != SymbolKind::Text {
+                continue;
+            }
+
+            if let Some(&index) = indices.get(&(symbol.address() as u32)) {
+                let name = symbol.name()?;
+                match seen.entry(name) {
+                    Entry::Vacant(v) => {
+                        v.insert(symbol.address());
+                        export_section.export(symbol.name()?, ExportKind::Func, index);
+                    },
+                    Entry::Occupied(o) => {
+                        eprintln!("warning: {name} already seen: old address {:X}, new {:X}", o.get(), symbol.address());
+                    }
+                }
+            }
+        }
+        module.section(&export_section);
+    }
+    
+    module.section(&StartSection {
+        function_index: 2
+    });
+
+    {
         let mut elem_section = ElementSection::new();
-        let mut elems = vec![2; table_size as usize];
+        let mut elems = vec![3; table_size as usize];
         for (&addr, &func) in &indices {
             let ptr = &mut elems[((addr - first_addr) >> 1) as usize];
-            assert_eq!(*ptr, 2);
+            assert_eq!(*ptr, 3);
             *ptr = func;
         }
         elem_section.active(None, &ConstExpr::i32_const(0), Elements::Functions(elems.into()));
@@ -112,10 +143,20 @@ fn main() -> anyhow::Result<()> {
 
     let mut code_section = CodeSection::new();
     {
+        let mut func = Function::new([]);
+        func.instructions().end();
+        code_section.function(&func);
+    }
+    {
         let mut func = begin_block();
         func.instructions()
             .unreachable()
             .end();
+        code_section.function(&func);
+    }
+    {
+        let mut func = begin_block();
+        emit_epilogue(&mut func.instructions(), &indices, Termination::ReturnToSender);
         code_section.function(&func);
     }
     for Block { body, term } in blocks.into_values() {

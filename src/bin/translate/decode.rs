@@ -13,7 +13,8 @@ pub struct Block {
 pub enum Termination {
     JumpAndLinkRegister { jalr: JumpAndLinkRegister, save_pc: u32 },
     JumpAndLink { dest: Register, pc: u32, save_pc: u32 },
-    Branch { src1: Register, src2: Register, funct: BranchType, pc: u32, else_pc: u32 }
+    Branch { src1: Register, src2: Register, funct: BranchType, pc: u32, else_pc: u32 },
+    ReturnToSender
 }
 
 pub fn discover_blocks(text: &ElfSection32<'_, '_, LittleEndian>) -> anyhow::Result<BTreeMap<u32, Block>> {

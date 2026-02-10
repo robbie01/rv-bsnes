@@ -72,11 +72,32 @@ pub fn emit_epilogue(instrs: &mut InstructionSink<'_>, indices: &BTreeMap<u32, u
 
             let start_addr = *indices.first_key_value().unwrap().0;
             instrs
+                .i32_const(-1)
+                .i32_eq()
+                .if_(BlockType::FunctionType(0))
+                .return_call(4)
+                .else_();
+
+            match base {
+                Register::ZERO => instrs.i32_const(0),
+                r => instrs.local_get(u32::from(u8::from(r)) - 1)
+            };
+
+            instrs
+                .i32_const(i16::from(offset).into())
+                .i32_add()
                 .i32_const(start_addr as i32)
                 .i32_sub()
                 .i32_const(1)
                 .i32_shr_u()
-                .return_call_indirect(0, 0);
+                .return_call_indirect(0, 0)
+                .end();
+        },
+        Termination::ReturnToSender => {
+            for i in 0..63 {
+                instrs.local_get(i);
+            }
+            instrs.return_();
         }
     }
     instrs.end();
