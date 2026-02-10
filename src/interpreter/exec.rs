@@ -8,7 +8,7 @@ use super::*;
 
 pub use lower::{Block, Op};
 
-impl<'arena, H: Hypervisor + ?Sized> Cpu<'arena, H> {
+impl<'arena, H: crate::Hypervisor + ?Sized> Interpreter<'arena, H> {
     #[inline(always)]
     fn decode_block(&mut self, mut pc: u32) -> anyhow::Result<&'arena Block<H>> {
         self.block_scratch.clear();
