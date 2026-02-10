@@ -13,7 +13,7 @@ use object::{LittleEndian, Object, ObjectSymbol, read::elf::ElfFile32};
 
 use crate::{cpu::{Cpu, linux::LinuxHypervisor}, instr::Register};
 
-mod instr;
+use rv::instr;
 mod cpu;
 mod fs;
 
