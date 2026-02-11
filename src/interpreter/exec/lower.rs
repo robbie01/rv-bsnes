@@ -4,7 +4,7 @@ use std::mem::MaybeUninit;
 
 use anyhow::{bail, ensure};
 
-use crate::{CANONICAL_NAN_F32, CANONICAL_NAN_F64, Hypervisor, instr::{Instruction as I, *}, interpreter::*};
+use crate::{cpu::CANONICAL_NAN_F32, cpu::CANONICAL_NAN_F64, cpu::Hypervisor, instr::{Instruction as I, *}, interpreter::*};
 
 pub type OpFn<H> = unsafe fn(&mut Interpreter<'_, H>, &mut H, *const Op<H>, MaybeUninit<InstructionUnion>) -> anyhow::Result<()>;
 

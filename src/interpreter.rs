@@ -8,7 +8,7 @@ use anyhow::ensure;
 use bumpalo::Bump;
 use fnv::FnvHashMap;
 
-use crate::{Cpu, FRegister, Hypervisor, instr::Register};
+use crate::{cpu::*, instr::Register};
 use memory::Memory;
 
 const HOT_SIZE: usize = 1 << 14;
@@ -54,14 +54,14 @@ impl<'arena, H: Hypervisor + ?Sized> Interpreter<'arena, H> {
         *unsafe { self.x.get_unchecked_mut(usize::from(x)) } = v;
     }
 
-    pub fn load<'data>(&mut self, h: &mut H, elf: &'data H::Object) -> anyhow::Result<()> where H: super::LoadableHypervisor<'data> {
+    pub fn load<'data>(&mut self, h: &mut H, elf: &'data H::Object) -> anyhow::Result<()> where H: LoadableHypervisor<'data> {
         h.load(self, elf)?;
         Ok(())
     }
 }
 
 // Load/store helpers
-impl<'arena, H: Hypervisor + ?Sized> crate::Cpu for Interpreter<'arena, H> {
+impl<'arena, H: Hypervisor + ?Sized> Cpu for Interpreter<'arena, H> {
     type H = H;
 
     #[inline(always)]

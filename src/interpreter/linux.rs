@@ -4,7 +4,7 @@ use anyhow::{Context as _, anyhow, bail, ensure};
 use object::{Architecture, LittleEndian, Object as _, ObjectSection, ObjectSymbol as _, elf::SHF_ALLOC, read::elf::ElfFile32};
 use stable_vec::StableVec;
 
-use crate::{interpreter::memory::PAGE_SIZE, fs::FILES, instr::Register};
+use crate::{cpu::*, interpreter::memory::PAGE_SIZE, fs::FILES, instr::Register};
 
 #[derive(Debug)]
 struct FileDescriptor {
@@ -60,7 +60,7 @@ impl<'data> LinuxHypervisor<'data> {
     }
 
     // __init_libc
-    fn init_libc(&mut self, ctx: &mut impl crate::Cpu<H = Self>) -> anyhow::Result<()> {
+    fn init_libc(&mut self, ctx: &mut impl Cpu<H = Self>) -> anyhow::Result<()> {
         let libc: u32 = self.image.as_ref().unwrap().symbol_by_name("__libc").context("no __libc")?.address().try_into()?;
 
         let auxv_addr = self.kmalloc(8).context("couldn't alloc auxv")?;
@@ -79,10 +79,10 @@ impl<'data> LinuxHypervisor<'data> {
     }
 }
 
-impl<'data> crate::LoadableHypervisor<'data> for LinuxHypervisor<'data> {
+impl<'data> LoadableHypervisor<'data> for LinuxHypervisor<'data> {
     type Object = ElfFile32<'data, LittleEndian>;
 
-    fn load<'this, C: crate::Cpu<H = Self> + 'this>(&'this mut self, ctx: &mut C, obj: &'data ElfFile32<'data, LittleEndian>) -> anyhow::Result<()> where 'data: 'this {
+    fn load<'this, C: Cpu<H = Self> + 'this>(&'this mut self, ctx: &mut C, obj: &'data ElfFile32<'data, LittleEndian>) -> anyhow::Result<()> where 'data: 'this {
         ensure!(self.image.is_none());
         ensure!(obj.architecture() == Architecture::Riscv32);
 
@@ -113,7 +113,7 @@ impl<'data> crate::LoadableHypervisor<'data> for LinuxHypervisor<'data> {
     }
 }
 
-impl<'data> crate::Hypervisor for LinuxHypervisor<'data> {
+impl<'data> Hypervisor for LinuxHypervisor<'data> {
     fn symbol(&self, sym: &str) -> anyhow::Result<u32> {
         Ok(self.image.as_ref().context("no image")?
             .symbol_by_name(sym).context("sym not found")?
@@ -121,7 +121,7 @@ impl<'data> crate::Hypervisor for LinuxHypervisor<'data> {
     }
 
     #[inline(always)]
-    fn before_block(&mut self, ctx: &mut impl crate::Cpu<H = Self>) -> anyhow::Result<()> {
+    fn before_block(&mut self, ctx: &mut impl Cpu<H = Self>) -> anyhow::Result<()> {
         #[allow(clippy::overly_complex_bool_expr)]
         if false && ctx.pc().is_some_and(|pc| ERROR_ROUTINES.contains(&pc)) {
             bail!("error routine reached");
@@ -131,12 +131,12 @@ impl<'data> crate::Hypervisor for LinuxHypervisor<'data> {
     }
 
     #[inline(always)]
-    fn after_block(&mut self, _ctx: &mut impl crate::Cpu<H = Self>) -> anyhow::Result<()> {
+    fn after_block(&mut self, _ctx: &mut impl Cpu<H = Self>) -> anyhow::Result<()> {
         Ok(())
     }
 
     #[inline(never)]
-    fn ebreak(&mut self, ctx: &mut impl crate::Cpu<H = Self>) -> anyhow::Result<()> {
+    fn ebreak(&mut self, ctx: &mut impl Cpu<H = Self>) -> anyhow::Result<()> {
         match ctx.pc() {
             Some(0xe0000002) => { // jg_cb_log
                 let addr = ctx.read_x(Register::A1);
@@ -160,7 +160,7 @@ impl<'data> crate::Hypervisor for LinuxHypervisor<'data> {
     }
 
     #[inline(never)]
-    fn ecall(&mut self, ctx: &mut impl crate::Cpu<H = Self>) -> anyhow::Result<()> {
+    fn ecall(&mut self, ctx: &mut impl Cpu<H = Self>) -> anyhow::Result<()> {
         match ctx.read_x(Register::A7) {
             214 => { // brk
                 let req = ctx.read_x(Register::A0);
