@@ -67,13 +67,12 @@ macro_rules! eprintln {
 const PROGRAM: &[u8] = include_bytes_aligned!(16, "../../bsnes.elf");
 
 #[wasm_bindgen]
-pub async fn worker_main() -> Result<(), JsValue> {
+pub async fn worker_main(game: &[u8]) -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
 
     let global = js_sys::global().dyn_into::<DedicatedWorkerGlobalScope>().map_err(|_| JsError::new("not in worker"))?;
-    let performance = global.performance().unwrap();
+    let performance = global.performance().ok_or_else(|| JsError::new("no performance"))?;
 
-    let game = include_bytes!("../../lttp.sfc");
     let arena = Bump::new();
 
     let program = ElfFile32::<LittleEndian>::parse(PROGRAM).js()?;

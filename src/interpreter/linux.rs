@@ -1,5 +1,3 @@
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
 use anyhow::{Context as _, anyhow, bail, ensure};
 use object::{Architecture, LittleEndian, Object as _, ObjectSection, ObjectSymbol as _, elf::SHF_ALLOC, read::elf::ElfFile32};
 use stable_vec::StableVec;
@@ -215,9 +213,9 @@ impl<'data> Hypervisor for LinuxHypervisor<'data> {
 
                 cfg_if::cfg_if! {
                     if #[cfg(all(target_family = "wasm", target_os = "unknown"))] {
-                        let time = Duration::ZERO;
+                        let time = std::time::Duration::ZERO;
                     } else {
-                        let time = SystemTime::now().duration_since(UNIX_EPOCH)?;
+                        let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
                     }
                 };
 

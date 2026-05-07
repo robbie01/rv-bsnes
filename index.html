@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Bruh</title>
+    <title>bsnes web</title>
     <style>
         * {
             box-sizing: border-box;
@@ -36,7 +36,9 @@
     <canvas id="c" width="512" height="224"></canvas>
     <div id="stats">
         frametime: <span id="frametime">N/A</span> s<br>
-        instructions/s: <span id="ips">N/A</span><br>
+        instructions/s (RV32): <span id="ips">N/A</span><br>
+        <input type="file" id="file"><br>
+        <button id="start">Start</button>
     </div>
     <pre id="log"></pre>
     <script>
@@ -44,25 +46,48 @@
         let log = document.getElementById('log')
         let frametime = document.getElementById('frametime')
         let ips = document.getElementById('ips')
+        let file = document.getElementById('file')
+        let start = document.getElementById('start')
 
         let ctx = c.getContext('2d')
 
-        let w = new Worker('./worker.js');
-        w.onmessage = e => {
-            let msg = e.data;
-            switch (msg.type) {
-            case "frame":
-                console.log("instructions/s:", msg.n_instructions / msg.time)
-                let img = new ImageData(new Uint8ClampedArray(msg.data), msg.pitch)
-                ctx.clearRect(0, 0, c.width, c.height)
-                ctx.putImageData(img, 0, 0)
+        let w = null
 
-                frametime.textContent = `${msg.time}`
-                ips.textContent = `${msg.n_instructions / msg.time}`
-                break
-            case "log":
-                log.innerHTML += `${msg.msg}\n`
+        start.onclick = async () => {
+            if (file.files.length == 0) {
+                return
             }
+
+            if (w != null) {
+                w.terminate()
+
+                log.innerHTML = ''
+                frametime.innerHTML = 'N/A'
+                ips.innerHTML = 'N/A'
+                ctx.clearRect(0, 0, c.width, c.height)
+            }
+
+            w = new Worker('./worker.js');
+
+            w.onmessage = e => {
+                let msg = e.data;
+                switch (msg.type) {
+                case "frame":
+                    console.log("instructions/s:", msg.n_instructions / msg.time)
+                    let img = new ImageData(new Uint8ClampedArray(msg.data), msg.pitch)
+                    ctx.clearRect(0, 0, c.width, c.height)
+                    ctx.putImageData(img, 0, 0)
+
+                    frametime.textContent = `${msg.time}`
+                    ips.textContent = `${msg.n_instructions / msg.time}`
+                    break
+                case "log":
+                    log.innerHTML += `${msg.msg}\n`
+                }
+            }
+
+            let game = (await file.files[0].bytes()).buffer
+            w.postMessage({ game }, [game])
         }
     </script>
 </body>
