@@ -1,0 +1,22 @@
+[package]
+name = "rv-web"
+publish = false
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rv = { path = ".." }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["DedicatedWorkerGlobalScope", "console", "Performance"] }
+
+anyhow = "1"
+object = { version = "0.38", default-features = false, features = ["read_core", "elf"] }
+include_bytes_aligned = "0.2"
+bumpalo = "3.19"
+
+console_error_panic_hook = "0.1"

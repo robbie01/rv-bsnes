@@ -269,7 +269,6 @@ pub enum Imm12 {
     And
 }
 
-#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImmShift {
     ShiftLeft,
@@ -523,7 +522,6 @@ impl RoundingMode {
     }
 }
 
-#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CsrFunct {

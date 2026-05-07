@@ -771,7 +771,8 @@ impl<H: Hypervisor + ?Sized> Op<H> {
             
             I::System(System::Ebreak) => op_fn!(ebreak::<size>),
             I::System(System::Ecall) => op_fn_only_4!(ecall::<size>),
-            _ => bail!("not yet implemented: {instr:?}")
+
+            I::System(System::Csr(csr)) => bail!("csr not yet implemented: {csr:?}")
         };
 
         Ok(Op { op_fn, instr: MaybeUninit::new(instr.into()) })
@@ -801,7 +802,6 @@ impl<H: Hypervisor + ?Sized> Block<H> {
         unsafe { op_fn(cpu, h, self.0.as_ptr(), instr) }
     }
 
-    #[allow(unused)]
     pub fn len(&self) -> usize {
         self.0.len() - 1
     }

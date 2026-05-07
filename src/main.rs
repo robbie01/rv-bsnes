@@ -1,20 +1,11 @@
-#![feature(adt_const_params)]
-#![feature(explicit_tail_calls)]
-#![expect(incomplete_features)]
-
 use std::time::Instant;
 
-use anyhow::Context;
+use anyhow::Context as _;
 use bumpalo::Bump;
 use include_bytes_aligned::include_bytes_aligned;
-use object::{LittleEndian, Object, ObjectSymbol, read::elf::ElfFile32};
+use object::{LittleEndian, Object as _, ObjectSymbol as _, read::elf::ElfFile32};
 
-use crate::{cpu::Cpu, interpreter::{Interpreter, linux::LinuxHypervisor}, instr::Register};
-
-use rv::instr;
-mod interpreter;
-mod fs;
-mod cpu;
+use rv::{cpu::Cpu, interpreter::{Interpreter, linux::LinuxHypervisor}, instr::Register};
 
 fn main() -> anyhow::Result<()> {
     let game = include_bytes!("../lttp.sfc");
@@ -102,31 +93,36 @@ fn main() -> anyhow::Result<()> {
     eprintln!("calling jg_game_load...");
     cpu.call_subroutine_by_name(&mut h, "jg_game_load")?;
 
-    let nframes = 200;
+    let nframes = 500;
     let mut frametime = 0.;
+    let mut instrs = 0;
 
     for i in 0..nframes {
         eprintln!("calling jg_exec_frame ({i})...");
-        let t1 = Instant::now();
-        cpu.call_subroutine_by_name(&mut h, "jg_exec_frame")?;
-        let t = Instant::now() - t1;
+        let t0 = Instant::now();
+        let n = cpu.call_subroutine_by_name(&mut h, "jg_exec_frame")?;
+        let t = Instant::now() - t0;
+        instrs += n;
         frametime += t.as_secs_f64();
 
-        // if i >= 300 {
-        //     let _w = cpu.load_u32(vidinfo_addr+0xc)?;
-        //     let h = cpu.load_u32(vidinfo_addr+0x10)?;
-        //     let p = cpu.load_u32(vidinfo_addr+0x1c)?;
-        //     let mut f = BufWriter::new(File::create(format!("frames/{i:03}.ppm"))?);
-        //     write!(f, "P6\n{p} {h}\n255\n")?;
-        //     for i in 0..(p*h) {
-        //         let c = cpu.load_u32(video_addr+4*i)?;
-        //         f.write_all(&c.to_be_bytes()[1..])?;
-        //     }
-        //     f.flush()?;
-        // }
+        if i >= 300 {
+            use std::{io::{BufWriter, Write as _}, fs::File};
+
+            let _w = cpu.load_u32(vidinfo_addr+0xc)?;
+            let h = cpu.load_u32(vidinfo_addr+0x10)?;
+            let p = cpu.load_u32(vidinfo_addr+0x1c)?;
+            let mut f = BufWriter::new(File::create(format!("frames/{i:03}.ppm"))?);
+            write!(f, "P6\n{p} {h}\n255\n")?;
+            for i in 0..(p*h) {
+                let c = cpu.load_u32(video_addr+4*i)?;
+                f.write_all(&c.to_be_bytes()[1..])?;
+            }
+            f.flush()?;
+        }
     }
 
     println!("avg s per frame: {}", frametime / nframes as f64);
+    println!("avg instrs/s: {}", instrs as f64 / frametime);
 
     Ok(())
 }

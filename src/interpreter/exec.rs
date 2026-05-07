@@ -33,7 +33,7 @@ impl<'arena, H: Hypervisor + ?Sized> Interpreter<'arena, H> {
         Ok(Block::new(self.arena, &self.block_scratch))
     }
 
-    fn continue_execution(&mut self, h: &mut H) -> anyhow::Result<()> {
+    fn continue_execution(&mut self, h: &mut H) -> anyhow::Result<usize> {
         if self.pc == 0 {
             bail!("tried to execute at address 0 (missing callback?)\nra = {:06X}", self.read_x(Register::RA));
         }
@@ -53,22 +53,23 @@ impl<'arena, H: Hypervisor + ?Sized> Interpreter<'arena, H> {
         };
         
         block.execute(self, h)?;
-        Ok(())
+        Ok(block.len())
     }
 
-    pub fn call_subroutine(&mut self, h: &mut H, sub: u32) -> anyhow::Result<()> {
+    pub fn call_subroutine(&mut self, h: &mut H, sub: u32) -> anyhow::Result<usize> {
         ensure!(self.pc == u32::MAX);
         self.pc = sub;
         self.write_x(Register::RA, u32::MAX); // sentinel
+        let mut acc = 0;
         while self.pc != u32::MAX {
             h.before_block(self)?;
-            self.continue_execution(h)?;
+            acc += self.continue_execution(h)?;
             h.after_block(self)?;
         }
-        Ok(())
+        Ok(acc)
     }
 
-    pub fn call_subroutine_by_name(&mut self, h: &mut H, sub: &str) -> anyhow::Result<()> {
+    pub fn call_subroutine_by_name(&mut self, h: &mut H, sub: &str) -> anyhow::Result<usize> {
         let addr = h.symbol(sub)?;
         self.call_subroutine(h, addr)
     }

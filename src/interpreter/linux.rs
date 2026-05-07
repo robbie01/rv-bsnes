@@ -1,4 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context as _, anyhow, bail, ensure};
 use object::{Architecture, LittleEndian, Object as _, ObjectSection, ObjectSymbol as _, elf::SHF_ALLOC, read::elf::ElfFile32};
@@ -122,7 +122,6 @@ impl<'data> Hypervisor for LinuxHypervisor<'data> {
 
     #[inline(always)]
     fn before_block(&mut self, ctx: &mut impl Cpu<H = Self>) -> anyhow::Result<()> {
-        #[allow(clippy::overly_complex_bool_expr)]
         if false && ctx.pc().is_some_and(|pc| ERROR_ROUTINES.contains(&pc)) {
             bail!("error routine reached");
         }
@@ -214,7 +213,13 @@ impl<'data> Hypervisor for LinuxHypervisor<'data> {
                 let _clockid = ctx.read_x(Register::A0);
                 let timespec = ctx.read_x(Register::A1);
 
-                let time = SystemTime::now().duration_since(UNIX_EPOCH)?;
+                cfg_if::cfg_if! {
+                    if #[cfg(all(target_family = "wasm", target_os = "unknown"))] {
+                        let time = Duration::ZERO;
+                    } else {
+                        let time = SystemTime::now().duration_since(UNIX_EPOCH)?;
+                    }
+                };
 
                 /*
                  * struct __kernel_timespec {

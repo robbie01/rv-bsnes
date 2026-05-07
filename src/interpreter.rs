@@ -49,6 +49,7 @@ impl<'arena, H: Hypervisor + ?Sized> Interpreter<'arena, H> {
     }
 
     #[inline(always)]
+    #[expect(clippy::missing_safety_doc)]
     pub unsafe fn write_x_unchecked(&mut self, x: Register, v: u32) {
         debug_assert_ne!(x, Register::ZERO);
         *unsafe { self.x.get_unchecked_mut(usize::from(x)) } = v;
