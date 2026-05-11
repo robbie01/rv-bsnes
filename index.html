@@ -6,6 +6,7 @@
     <style>
         * {
             box-sizing: border-box;
+            margin: 0;
         }
         html {
             height: 100%;
@@ -13,11 +14,14 @@
         body {
             display: grid;
             grid-template-columns: min-content 1fr;
-            grid-template-rows: min-content 1fr;
+            grid-template-rows: min-content min-content 1fr;
             gap: 8px;
             height: 100%;
-            margin: 0;
             padding: 8px;
+        }
+
+        header {
+            grid-column: 1 / span 2;
         }
 
         #c {
@@ -25,20 +29,46 @@
             height: 300px;
         }
 
+        #romform fieldset {
+            width: min-content;
+        }
+
         #log {
             grid-column: 1 / span 2;
             overflow: scroll;
-            margin: 0;
+        }
+
+        #c, #log {
+            border: 1px solid black;
         }
     </style>
 </head>
 <body>
+    <header>
+        <h1>bsnes web</h1>
+        source: <a href="https://github.com/robbie01/rv-bsnes">https://github.com/robbie01/rv-bsnes</a>
+    </header>
     <canvas id="c" width="512" height="224"></canvas>
     <div id="stats">
         frametime: <span id="frametime">N/A</span> s<br>
         instructions/s (RV32): <span id="ips">N/A</span><br>
-        <input type="file" id="file"><br>
-        <button id="start">Start</button>
+        <br>
+        <form id="romform">
+            <fieldset>
+                <legend>submit your SNES rom here</legend>
+                <input type="file" id="file" accept=".sfc,.smc"><br>
+                <br>
+                <button>Start</button>
+            </fieldset>
+        </form>
+        <br>
+        <p>
+            This is the first known instance of bsnes running in a web browser. Unlike snes9x, it is a cycle accurate emulator and capable of certain graphical effects that snes9x (and most other emulators) don't emulate.
+            <br><br>
+            It is currently extremely slow. This is an emulator (SNES, 65C816 interpreter and other chips) running inside of an emulator (RISC-V interpreter) running inside of an emulator (WebAssembly black box).
+            <br><br>
+            Proposed improvements to the RISC-V portion (the code that I own) include exploring static or dynamic recompilation, by way of either generating WebAssembly directly or leveraging a C compiler.
+        </p>
     </div>
     <pre id="log"></pre>
     <script>
@@ -47,13 +77,15 @@
         let frametime = document.getElementById('frametime')
         let ips = document.getElementById('ips')
         let file = document.getElementById('file')
-        let start = document.getElementById('start')
+        let romform = document.getElementById('romform')
 
         let ctx = c.getContext('2d')
 
         let w = null
 
-        start.onclick = async () => {
+        romform.onsubmit = async e => {
+            e.preventDefault()
+
             if (file.files.length == 0) {
                 return
             }

@@ -1,4 +1,4 @@
-self.onmessage = msg => (async () => {
+self.onmessage = async msg => {
     console.log("hello from worker")
 
     let { default: init, worker_main } = await import("./rv-web/pkg/rv_web.js");
@@ -8,6 +8,5 @@ self.onmessage = msg => (async () => {
 
     console.log("running interpreter")
     let game = new Uint8Array(msg.data.game)
-    await worker_main(game)
-})()
-    .catch(e => console.error("Worker internal error:", e.message))
+    worker_main(game)
+}

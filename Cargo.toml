@@ -2,21 +2,29 @@
 resolver = "2"
 members = [".", "rv-web"]
 
+[workspace.dependencies]
+anyhow = "1"
+object = { version = "0.39", default-features = false, features = ["read_core", "elf"] }
+include_bytes_aligned = "0.2"
+bumpalo = "3.20"
+
 [package]
 name = "rv"
 publish = false
 version = "0.0.0"
 edition = "2024"
 default-run = "rv"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
-anyhow = "1"
-object = { version = "0.38", default-features = false, features = ["read_core", "elf"] }
-include_bytes_aligned = "0.2"
+anyhow.workspace = true
+object.workspace = true
+include_bytes_aligned.workspace = true
+bumpalo.workspace = true
+
 stable-vec = "0.4"
 fnv = "1"
 paste = "1"
-bumpalo = "3.19"
 wasm-encoder = "0.244"
 cfg-if = "1"
 
