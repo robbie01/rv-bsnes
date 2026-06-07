@@ -1,6 +1,7 @@
 mod lower;
 
 use anyhow::bail;
+use rand::RngExt;
 
 use crate::instr::{Instruction as I, *};
 
@@ -40,15 +41,25 @@ impl<'arena, H: Hypervisor + ?Sized> Interpreter<'arena, H> {
 
         let hot_key = (self.pc >> 2) as usize & (HOT_SIZE - 1);
 
-        let block = if let Some((pc, ref block)) = self.hot_cache[hot_key] && pc == self.pc {
+        let block = if let Some(block) = self.hot_cache[hot_key].iter().find_map(|i| { let &(pc, block) = i.as_ref()?; (pc == self.pc).then_some(block) }) {
             block
         } else if let Some(block) = self.block_cache.get(&self.pc) {
-            self.hot_cache[hot_key] = Some((self.pc, block));
+            if let Some(r) = self.hot_cache[hot_key].iter_mut().find(|i| i.is_none()) {
+                *r = Some((self.pc, block));
+            } else {
+                let way = self.rng.random_range(0..HOT_WAYS);
+                self.hot_cache[hot_key][way] = Some((self.pc, block));
+            }
             block
         } else {
             let block = self.decode_block(self.pc)?;
             self.block_cache.insert(self.pc, block);
-            self.hot_cache[hot_key] = Some((self.pc, block));
+            if let Some(r) = self.hot_cache[hot_key].iter_mut().find(|i| i.is_none()) {
+                *r = Some((self.pc, block));
+            } else {
+                let way = self.rng.random_range(0..HOT_WAYS);
+                self.hot_cache[hot_key][way] = Some((self.pc, block));
+            }
             block
         };
         

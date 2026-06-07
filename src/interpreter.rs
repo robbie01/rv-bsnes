@@ -7,24 +7,28 @@ use std::fmt::Debug;
 use anyhow::ensure;
 use bumpalo::Bump;
 use fnv::FnvHashMap;
+use rand::{make_rng, rngs::SmallRng};
 
 use crate::{cpu::*, instr::Register};
 use memory::Memory;
 
 const HOT_SIZE: usize = 1 << 14;
+const HOT_WAYS: usize = 4;
 
 #[derive(Debug)]
 pub struct Interpreter<'arena, H: Hypervisor + ?Sized> {
     arena: &'arena Bump,
 
     pc: u32,
-    pub(self) x: [u32; 32],
-    pub(self) f: [FRegister; 32],
-    pub(self) memory: Memory,
+    x: [u32; 32],
+    f: [FRegister; 32],
+    memory: Memory,
 
-    pub(self) hot_cache: [Option<(u32, &'arena exec::Block<H>)>; HOT_SIZE],
-    pub(self) block_cache: FnvHashMap<u32, &'arena exec::Block<H>>,
-    block_scratch: Vec<exec::Op<H>>
+    hot_cache: [[Option<(u32, &'arena exec::Block<H>)>; HOT_WAYS]; HOT_SIZE],
+    block_cache: FnvHashMap<u32, &'arena exec::Block<H>>,
+    block_scratch: Vec<exec::Op<H>>,
+
+    rng: SmallRng
 }
 
 impl<'arena, H: Hypervisor + ?Sized> Interpreter<'arena, H> {
@@ -37,9 +41,11 @@ impl<'arena, H: Hypervisor + ?Sized> Interpreter<'arena, H> {
             f: [FRegister::write_f64(0.); 32],
             memory: Memory::new(),
 
-            hot_cache: [const { None }; _],
+            hot_cache: [[const { None }; _]; _],
             block_cache: FnvHashMap::default(),
-            block_scratch: Vec::new()
+            block_scratch: Vec::new(),
+
+            rng: make_rng()
         };
 
         // initialize stack pointer (todo make this better LoL)
